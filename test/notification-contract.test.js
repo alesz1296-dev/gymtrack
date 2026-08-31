@@ -39,6 +39,7 @@ test('las rutas, la bandeja y los eventos están conectados', async () => {
     'invitation_accepted',
     'message_received',
     'nutrition_assigned',
+    'nutrition_day_completed',
   ])
     assert.match(events, new RegExp(`type: '${type}'`), `falta conectar ${type}`);
 });

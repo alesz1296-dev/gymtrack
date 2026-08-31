@@ -358,3 +358,196 @@ export async function getPlan(id, user) {
   plan.days = (await pool.query(PLAN_DAYS_QUERY, [id])).rows;
   return plan;
 }
+
+/* ---------- Registro del atleta ---------- */
+
+/* Vuelve a contar las comidas marcadas y decide si el día queda cumplido.
+
+   `allowReopen` solo se activa al desmarcar. Al marcar nunca se reabre un día
+   ya cerrado, porque el atleta pudo haberlo cerrado a propósito con menos
+   comidas de las planificadas. Es la misma regla que en los entrenamientos. */
+async function refreshDayCompletion(client, dayLogId, nutritionDayId, allowReopen) {
+  const wasCompleted = Boolean(
+    (await client.query('SELECT completed_at FROM nutrition_day_logs WHERE id=$1', [dayLogId]))
+      .rows[0]?.completed_at,
+  );
+
+  const total = (
+    await client.query('SELECT COUNT(*)::int AS n FROM nutrition_meals WHERE day_id=$1', [
+      nutritionDayId,
+    ])
+  ).rows[0].n;
+
+  const done = (
+    await client.query('SELECT COUNT(*)::int AS n FROM nutrition_meal_logs WHERE day_log_id=$1', [
+      dayLogId,
+    ])
+  ).rows[0].n;
+
+  const completed = done >= total;
+
+  const dayLog = (
+    await client.query(
+      `UPDATE nutrition_day_logs
+        SET completed_at = CASE
+              WHEN $2 THEN COALESCE(completed_at, NOW())
+              WHEN $3 THEN NULL
+              ELSE completed_at END
+      WHERE id=$1 RETURNING *`,
+      [dayLogId, completed, allowReopen],
+    )
+  ).rows[0];
+
+  return {
+    dayLog,
+    totalMeals: total,
+    loggedMeals: done,
+    newlyCompleted: !wasCompleted && Boolean(dayLog.completed_at),
+  };
+}
+
+/* Lo que el atleta ya marcó en este día: qué comidas, con qué estado y con qué
+   nota. Sin esto, al volver a un día a medias la pantalla no sabría qué
+   pintar como hecho ni recuperaría la sustitución que se escribió. */
+async function loggedMeals(client, dayLogId) {
+  return (
+    await client.query(
+      `SELECT meal_id AS "mealId", status, notes, logged_at AS "loggedAt"
+        FROM nutrition_meal_logs WHERE day_log_id=$1`,
+      [dayLogId],
+    )
+  ).rows;
+}
+
+/* Abre el día o recupera el que ya existiera en esa semana.
+
+   Comprueba que el día pertenezca de verdad a un plan activo del atleta: el
+   identificador llega del navegador y no puede darse por bueno. Es el mismo
+   control que `startWorkout`, que en su día faltaba y hubo que añadir. */
+export async function openDay(athleteId, nutritionDayId, weekNumber) {
+  return withTransaction(async (client) => {
+    const day = (
+      await client.query(
+        `SELECT nd.id, nd.day_type, p.weeks
+        FROM nutrition_days nd
+        JOIN nutrition_plans p ON p.id = nd.plan_id
+        WHERE nd.id=$1 AND p.athlete_id=$2 AND p.status='active'`,
+        [nutritionDayId, athleteId],
+      )
+    ).rows[0];
+    if (!day) return { error: 'forbidden' };
+    if (weekNumber > day.weeks) return { error: 'week' };
+
+    /* La unicidad por franja permite resolverlo con un upsert en vez de
+       consultar y luego insertar, que dejaría hueco a una carrera. */
+    const dayLog = (
+      await client.query(
+        `INSERT INTO nutrition_day_logs (athlete_id, nutrition_day_id, week_number)
+        VALUES ($1,$2,$3)
+        ON CONFLICT (athlete_id, nutrition_day_id, week_number)
+          DO UPDATE SET athlete_id = EXCLUDED.athlete_id
+        RETURNING *`,
+        [athleteId, nutritionDayId, weekNumber],
+      )
+    ).rows[0];
+
+    /* Un día libre no tiene comidas, así que queda cumplido en el mismo
+       momento en que el atleta lo abre. */
+    const progress = await refreshDayCompletion(client, dayLog.id, nutritionDayId, false);
+    return { ...progress, logged: await loggedMeals(client, dayLog.id) };
+  });
+}
+
+/* Marca una comida. Volver a marcarla cambia el estado y la nota en lugar de
+   duplicar la fila, para que corregirse no choque con la unicidad. */
+export async function logMeal(athleteId, dayLogId, mealId, input) {
+  return withTransaction(async (client) => {
+    const dayLog = (
+      await client.query(
+        'SELECT id, nutrition_day_id FROM nutrition_day_logs WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
+        [dayLogId, athleteId],
+      )
+    ).rows[0];
+    if (!dayLog) return { error: 'log' };
+
+    const belongs = (
+      await client.query('SELECT 1 FROM nutrition_meals WHERE id=$1 AND day_id=$2', [
+        mealId,
+        dayLog.nutrition_day_id,
+      ])
+    ).rowCount;
+    if (!belongs) return { error: 'meal' };
+
+    await client.query(
+      `INSERT INTO nutrition_meal_logs (day_log_id, meal_id, status, notes)
+      VALUES ($1,$2,$3,$4)
+      ON CONFLICT (day_log_id, meal_id)
+        DO UPDATE SET status = EXCLUDED.status, notes = EXCLUDED.notes, logged_at = NOW()`,
+      [dayLogId, mealId, input.status, input.notes || null],
+    );
+
+    return refreshDayCompletion(client, dayLogId, dayLog.nutrition_day_id, false);
+  });
+}
+
+/* Deshace el marcado de una comida y, si el día estaba cerrado, lo reabre. */
+export async function unlogMeal(athleteId, dayLogId, mealId) {
+  return withTransaction(async (client) => {
+    const dayLog = (
+      await client.query(
+        'SELECT id, nutrition_day_id FROM nutrition_day_logs WHERE id=$1 AND athlete_id=$2 FOR UPDATE',
+        [dayLogId, athleteId],
+      )
+    ).rows[0];
+    if (!dayLog) return { error: 'log' };
+
+    await client.query('DELETE FROM nutrition_meal_logs WHERE day_log_id=$1 AND meal_id=$2', [
+      dayLogId,
+      mealId,
+    ]);
+
+    return refreshDayCompletion(client, dayLogId, dayLog.nutrition_day_id, true);
+  });
+}
+
+/* Cuadrícula de cumplimiento de un plan: una fila por día registrado.
+
+   Se consulta por el linaje y no por el plan concreto, para que modificar el
+   plan no borre de la vista lo que el atleta ya había registrado sobre la
+   versión anterior. Es la misma razón por la que existe `origin_plan_id`. */
+export async function planProgress(originPlanId, athleteId) {
+  return (
+    await pool.query(
+      `SELECT dl.week_number, nd.day_order, nd.day_type,
+        dl.completed_at, dl.created_at AS started_at,
+        (SELECT COUNT(*)::int FROM nutrition_meal_logs ml WHERE ml.day_log_id = dl.id)
+          AS logged_meals,
+        (SELECT COUNT(*)::int FROM nutrition_meals m WHERE m.day_id = nd.id)
+          AS total_meals,
+        (SELECT COUNT(*)::int FROM nutrition_meal_logs ml
+          WHERE ml.day_log_id = dl.id AND ml.status <> 'done') AS off_plan_meals
+      FROM nutrition_day_logs dl
+      JOIN nutrition_days nd ON nd.id = dl.nutrition_day_id
+      JOIN nutrition_plans p ON p.id = nd.plan_id
+      WHERE p.origin_plan_id = $1 AND dl.athlete_id = $2
+      ORDER BY dl.week_number, nd.day_order`,
+      [originPlanId, athleteId],
+    )
+  ).rows;
+}
+
+/* Datos para avisar al entrenador cuando el atleta cierra un día. */
+export async function dayNotificationContext(dayLogId) {
+  return (
+    await pool.query(
+      `SELECT p.trainer_id, p.name AS plan_name, nd.name AS day_name, nd.day_type,
+        dl.athlete_id, u.first_name AS athlete_first_name, u.last_name AS athlete_last_name
+      FROM nutrition_day_logs dl
+      JOIN nutrition_days nd ON nd.id = dl.nutrition_day_id
+      JOIN nutrition_plans p ON p.id = nd.plan_id
+      JOIN users u ON u.id = dl.athlete_id
+      WHERE dl.id = $1`,
+      [dayLogId],
+    )
+  ).rows[0];
+}

@@ -2254,3 +2254,95 @@ Añade `weeks`, `start_date`, `end_date` y `origin_plan_id` a `nutrition_plans`;
 3. **El servidor de la fase anterior seguía ocupando el puerto 3000**, así que la comprobación por HTTP respondía con el código viejo: pedía `meals` en la raíz del plan y `/plans/:id/status` daba 404. Se perdió un rato buscando el fallo en el esquema, que era correcto. Antes de dar por buena una comprobación contra un servidor local, hay que asegurarse de que el que responde es el que se acaba de arrancar.
 
 **Pendiente de esta fase.** Confirmación visual del usuario y publicar en Render **aplicando allí la migración 007**, que ya está en Neon. La fase 3 —que el atleta marque lo que come— es la que cierra el ciclo y da el valor de todo este bloque.
+
+### Publicación del bloque de nutrición y una lección sobre migraciones
+
+El trabajo de las fases 1 y 2 se confirmó en el commit `4f92c01` (36 archivos) y se publicó en Render.
+
+**Corrección de un dato que esta bitácora dejó mal escrito.** Las secciones de las dos fases decían «publicar en Render aplicando allí la migración». **Eso no aplica:** Render usa la misma base de Neon contra la que se trabaja en local, así que las migraciones ya estaban puestas en el momento de aplicarlas aquí. En Neon y en Render no había que ejecutar nada; solo desplegar el código.
+
+#### La rotura en producción, y por qué
+
+Mientras revisaba la aplicación, el usuario recibió un error 500 al entrar a Nutrición como entrenador, con la traza apuntando a `/api/tracking/nutrition` y a `nutricion.js:50`. Se comprobó de dónde venía en lugar de suponerlo: el `nutricion.js` servido por Render era el **viejo** —su línea 50 era exactamente esa llamada—, mientras que el de localhost ya era el nuevo. El usuario estaba mirando el sitio publicado.
+
+La causa: **la migración 007 eliminó la columna `nutrition_meals.plan_id`**, y el código que seguía publicado hacía `LEFT JOIN nutrition_meals m ON m.plan_id = p.id`.
+
+El alcance era mayor que la pantalla que él vio. Tres pantallas usaban ese endpoint, y la peor era la **ficha individual del atleta**: pide cinco endpoints con `Promise.all`, así que al rechazar uno **no cargaba la página entera** —rutina, cumplimiento, mediciones y check-ins incluidos— y no solo su tarjeta de nutrición.
+
+Daño real ninguno, porque antes de escribir la migración se había comprobado que no existía ni un plan ni una comida guardados. Pero el sitio estuvo caído en esas tres pantallas desde que se aplicó la migración hasta que se desplegó.
+
+#### La regla que queda establecida
+
+**Una migración que QUITA algo rompe el código publicado en el instante en que se aplica, y la ventana no se cierra hasta el despliegue.** Las seis migraciones anteriores eran aditivas y por eso el riesgo de trabajar contra la base de producción nunca se había materializado; esta fue la primera destructiva.
+
+Cuando haya que retirar una columna, el orden correcto son **dos migraciones y dos despliegues**: primero publicar el código que ya no la usa, y quitarla después. Si eso no es posible, aplicar la migración justo antes de desplegar y no horas antes, para que la ventana sea de minutos.
+
+Es el coste concreto del riesgo estructural asumido el 14 de agosto, que hasta ahora era teórico.
+
+#### Verificación en producción
+
+Tras el despliegue se comprobó desde fuera, sin dar por bueno que hubiera subido:
+
+- `/js/comun/plan-detalle.js`, `/js/comun/nutricion-macros.js`, `/js/comun/plan-copia.js`, `/entrenador/alimentos.html` y `/entrenador/nutricion-formulario.html` responden 200; antes daban 404.
+- El `nutricion.js` publicado ya pide `/api/nutrition/plans` y no el endpoint retirado.
+- **`/api/nutrition/foods` y `/api/nutrition/plans` responden 401 y no 404**, que es la prueba de que el módulo también subió del lado del servidor y no solo los archivos estáticos. Un 404 habría significado que el router no está montado.
+
+### Pendientes al 31 de agosto de 2026, comprobados uno por uno
+
+Se verificó cada uno contra el código y la base antes de anotarlo, en lugar de arrastrarlos de memoria.
+
+**Producto**
+
+1. **Fase 3 de nutrición: que el atleta registre lo que come.** Es la que cierra el ciclo. Hoy el plan está bien construido pero el entrenador sigue sin ver adherencia, igual que antes del bloque.
+2. **Fase 4: adherencia del entrenador**, que reutiliza la cuadrícula de cumplimiento ya existente.
+3. **Fotografías de progreso.** La tabla existe y está vacía; sigue bloqueada por la decisión de almacenamiento de objetos, no por programación.
+
+**Operación**
+
+4. **Nada ejecuta las 161 pruebas automáticamente.** No existe `.github`. Una suite que solo corre cuando alguien se acuerda se degrada sola.
+5. **`.env` y `npm test` siguen apuntando a la base publicada**, con el coste ya demostrado más arriba.
+6. **`ssl: { rejectUnauthorized: false }`** en `src/config/database.js`: la conexión va cifrada pero sin verificar el certificado. Es la otra cara del pendiente de `sslmode=verify-full`.
+7. **Entregabilidad del correo.** El remitente sigue siendo una dirección `@gmail.com` y la verificación es bloqueante, así que un correo en spam deja a alguien fuera. Se resuelve con dominio propio y el paso a Resend, ya escrito.
+
+**Higiene**
+
+8. **`auth_tokens` crece sin límite:** hay 6 filas y **las 6 están usadas o vencidas**. Irrelevante hoy, conviene resolverlo antes de tener usuarios.
+9. **`multer` sigue declarado en `package.json` y sin usarse** en ningún archivo de `src`. Espera a las fotografías.
+10. **`README.md:155` sigue pidiendo «Retirar las cuentas demo»**, que ya no existen.
+11. **Carrera en `createOnce` y `createUnlessUnread`:** `INSERT ... WHERE NOT EXISTS` no es atómico y no hay índice único detrás, así que dos peticiones simultáneas pueden duplicar un aviso.
+12. **Una medición no se puede corregir a «sin dato»**, por el `COALESCE` del upsert.
+13. **Esta bitácora supera las 2.250 líneas.** La sección «Estado actual» reescrita en cada sesión sigue propuesta y sin decidir.
+
+### Fase 3 terminada: el atleta registra lo que come
+
+Es la fase que cierra el ciclo. Hasta ahora el plan se construía cada vez mejor pero **nadie registraba nada**, así que el entrenador seguía sin ver adherencia, exactamente igual que antes de empezar el bloque.
+
+**Migración `008_registro_nutricion.sql`**, aplicada en Neon: tipo `nutrition_log_status`, tabla `nutrition_day_logs` (un día abierto por el atleta en una semana concreta) y `nutrition_meal_logs` (una fila por comida marcada). Es el mismo modelo que `workout_sessions` + `workout_exercise_log`.
+
+**Decisiones tomadas al implementar:**
+
+- **La unidad de registro es la comida, no el alimento ni el día.** Marcar alimento por alimento serían quince toques diarios y nadie lo haría; marcar solo el día entero perdería justo lo que el entrenador necesita saber, que es qué comida se salta la gente. La comida deja entre tres y seis toques al día.
+- **Tres estados y no dos: `done`, `swapped` y `skipped`.** Una comida no solo se hace o no se hace, y el documento de visión ya preveía «marcar comidas, registrar sustituciones y dejar comentarios». Un registro que solo admite sí o no empuja a mentir. El caso normal sigue siendo **un solo toque** en «Hecho», sin escribir nada.
+- **Hay unicidad por franja**, al revés que en `workout_sessions`. Se entrena dos veces el mismo día de forma legítima, pero el lunes de la semana 2 solo se come una vez. Eso permitió resolver la apertura del día con un `ON CONFLICT` en vez de consultar y luego insertar, que dejaba hueco a una carrera.
+- **El recuento y el cierre del día los decide el servidor**, y la pantalla solo aplica lo que le responde. Si los calculara por su cuenta, dos pestañas abiertas mostrarían cosas distintas.
+- **La cuadrícula se consulta por `origin_plan_id`**, no por el plan concreto, para que modificar el plan no borre de la vista lo que el atleta ya había registrado sobre la versión anterior. Hay una prueba que lo comprueba.
+- **`offPlanMeals`** cuenta las comidas cambiadas o saltadas de cada día. Un día cumplido a base de sustituciones no es lo mismo que uno seguido al pie de la letra, y el entrenador necesita distinguirlo; la fase 4 lo usará.
+- **El módulo compartido no aprendió nada del registro.** `renderPlanDay` acepta un `decorateMeal` que devuelve `{ badge, footer }`, así que la pantalla del atleta cuelga sus botones y la del entrenador sigue viendo la misma vista de lectura de siempre.
+
+**Interfaz.** La pantalla del atleta abre en la semana y el día que tocan hoy, con navegación entre semanas cuando el plan dura más de una. Cada comida lleva sus tres botones y, al elegir «Cambié algo», aparece un campo para escribir qué comió en su lugar; la nota se guarda al salir del campo y no en cada tecla, que dispararía treinta peticiones. El día se cierra solo al marcar la última comida y el aviso llega al entrenador.
+
+**Archivos.** Creados: la migración, `test/nutrition-log.test.js`. Modificados: las cuatro capas del módulo `nutrition`, `public/js/atleta/nutricion.js` (reescrita), `public/js/comun/plan-detalle.js`, `components.css` y tres pruebas de contrato.
+
+**Verificaciones ejecutadas.**
+
+- **La suite pasó de 161 a 179 pruebas**, todas aprobadas.
+- `nutrition-log.test.js`, dieciséis contra la base: abrir el día, reutilizar el registro, rechazar un día ajeno y una semana fuera del plan, el cierre automático al marcar la última comida, la nota de la sustitución, que volver a marcar corrija en vez de duplicar, que desmarcar reabra el día, que una comida de otro día se rechace, que un registro ajeno no se pueda tocar, que un día libre se cierre solo, que lo de una semana no cuente en otra, y **que modificar el plan conserve lo ya registrado**.
+- Dos de contrato nuevas: que **los tres estados coincidan entre el enum de PostgreSQL, la validación y los botones**, y que las rutas de registro se declaren fuera de la rama de planes.
+- **Comprobación temporal por HTTP con 17 controles, todos correctos**, incluidos que `/plans/:id/progress` no lo capture `/plans/:id`, que el entrenador reciba 403 al intentar registrar, que marcar sin token de CSRF se rechace, y que le llegue el aviso del día completado. Auditoría posterior sin restos.
+- `format:check` conforme y `git diff --check` limpio.
+
+**Un error propio.** La prueba de contrato de los estados capturaba el `z.enum` del **estado del plan** —draft, active, archived—, que aparece antes en el archivo de rutas, y comparaba dos listas que no tienen nada que ver. Se ancló la expresión a la ruta del registro. Es la segunda vez en el proyecto que una expresión regular de prueba coge la coincidencia equivocada por no estar anclada.
+
+**Pendiente de esta fase.** Confirmación visual del usuario y despliegue. **La migración 008 es puramente aditiva**, así que no rompe el código publicado como sí hizo la 007: el sitio actual sigue funcionando aunque el despliegue tarde.
+
+**Lo siguiente es la fase 4**, que ya tiene casi todo hecho: el endpoint `/plans/:id/progress` existe y devuelve la cuadrícula, y `renderCompliance` del módulo compartido de rutinas la sabe dibujar. Falta llevarla a la pantalla del entrenador y a la ficha del atleta.

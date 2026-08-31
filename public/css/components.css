@@ -1026,3 +1026,14 @@ button.list-item.active { border-color: var(--brand); background: var(--brand-so
 .item-macros { display: block; margin-top: 6px; font-size: 12px; }
 
 .meal-total { margin: var(--sp-3) 0 0; font-size: 13px; }
+
+/* Botones de marcado de cada comida. Se reparten en varias líneas en móvil:
+   son tres estados más "Quitar" y no caben en una fila estrecha. */
+.meal-actions { margin-top: var(--sp-3); }
+.meal-actions .btn svg { width: 15px; height: 15px; }
+
+/* El día ya cumplido se dice con color, no solo con texto. */
+.day-progress.is-done span {
+  color: var(--brand);
+  font-weight: 700;
+}

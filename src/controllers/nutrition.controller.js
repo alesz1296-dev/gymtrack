@@ -45,3 +45,20 @@ export async function setPlanStatus(req, res) {
     plan: await service.setPlanStatus(req.params.id, req.session.user.id, req.body.status),
   });
 }
+
+/* ---------- Registro del atleta ---------- */
+
+export async function progress(req, res) {
+  res.json(await service.planProgress(req.params.id, req.session.user));
+}
+export async function openDay(req, res) {
+  res
+    .status(201)
+    .json(await service.openDay(req.session.user.id, req.body.nutritionDayId, req.body.weekNumber));
+}
+export async function logMeal(req, res) {
+  res.json(await service.logMeal(req.session.user.id, req.params.id, req.params.mealId, req.body));
+}
+export async function unlogMeal(req, res) {
+  res.json(await service.unlogMeal(req.session.user.id, req.params.id, req.params.mealId));
+}

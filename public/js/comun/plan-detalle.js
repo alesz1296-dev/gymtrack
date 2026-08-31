@@ -61,9 +61,14 @@ function renderItem(item) {
         </li>`;
 }
 
-function renderMeal(meal) {
+/* `decorate` deja que la pantalla del atleta añada su estado y sus botones sin
+   que este módulo aprenda nada del registro: recibe la comida y devuelve
+   `{ badge, footer }`, los dos opcionales. La pantalla del entrenador no lo
+   pasa y obtiene la misma vista de lectura de siempre. */
+function renderMeal(meal, decorate) {
   const macros = mealMacros(meal);
   const nota = meal.details ? `<p class="muted">${escapeHtml(meal.details)}</p>` : '';
+  const extra = decorate?.(meal) ?? {};
 
   return `
       <article class="plan-meal">
@@ -71,12 +76,14 @@ function renderMeal(meal) {
           <strong>${escapeHtml(meal.name || 'Comida')}</strong>
           <span class="muted">${macroLine(macros)}</span>
         </div>
+        ${extra.badge ?? ''}
         ${
           meal.items.length
             ? `<ul class="plan-items">${meal.items.map(renderItem).join('')}</ul>`
             : ''
         }
         ${nota}
+        ${extra.footer ?? ''}
       </article>`;
 }
 
@@ -88,7 +95,8 @@ function dayBadge(day) {
   return '';
 }
 
-export function renderPlanDay(day) {
+export function renderPlanDay(day, options = {}) {
+  const { decorateMeal, dayHeader = '', dayFooter = '' } = options;
   const macros = dayMacros(day);
   const notas = day.notes ? `<p class="muted">${escapeHtml(day.notes)}</p>` : '';
 
@@ -100,6 +108,7 @@ export function renderPlanDay(day) {
         <h3>Día ${day.day_order} · ${escapeHtml(day.name)} ${dayBadge(day)}</h3>
         <p class="muted">Sin plan de comidas asignado.</p>
         ${notas}
+        ${dayFooter}
       </section>`;
 
   const aviso = macros.incomplete
@@ -109,19 +118,21 @@ export function renderPlanDay(day) {
   return `
       <section class="plan-day">
         <h3>Día ${day.day_order} · ${escapeHtml(day.name)} ${dayBadge(day)}</h3>
+        ${dayHeader}
         ${notas}
-        <div class="plan-meals">${day.meals.map(renderMeal).join('')}</div>
+        <div class="plan-meals">${day.meals.map((meal) => renderMeal(meal, decorateMeal)).join('')}</div>
         <p class="day-total">
           <strong>Total del día</strong>
           <span>${macroLine(macros, { withFiber: true })}</span>
           ${aviso}
         </p>
+        ${dayFooter}
       </section>`;
 }
 
-export function renderPlanWeek(plan) {
+export function renderPlanWeek(plan, options = {}) {
   if (!plan.days?.length) return '<div class="empty">Este plan no tiene días.</div>';
-  return plan.days.map(renderPlanDay).join('');
+  return plan.days.map((day) => renderPlanDay(day, options)).join('');
 }
 
 /* Los objetivos diarios del plan, cuando el entrenador los definió. Son la

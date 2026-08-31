@@ -117,3 +117,85 @@ export async function getPlan(id, user) {
   plan.currentDay = currentDay(plan);
   return plan;
 }
+
+/* ---------- Registro del atleta ---------- */
+
+/* Traduce los errores del repositorio a respuestas HTTP. Se comparte entre
+   las tres operaciones de registro para no repetir los mismos mensajes. */
+function assertLog(result) {
+  if (result.error === 'forbidden')
+    throw new HttpError(403, 'Este día no pertenece a un plan activo tuyo');
+  if (result.error === 'week') throw new HttpError(400, 'Esa semana está fuera del plan');
+  if (result.error === 'log') throw new HttpError(404, 'Registro no encontrado');
+  if (result.error === 'meal')
+    throw new HttpError(403, 'La comida no pertenece al día de este registro');
+  return result;
+}
+
+/* Avisa al entrenador cuando el atleta cierra un día completo.
+
+   Se usa `createOnce` con el identificador del registro dentro del enlace,
+   así que deshacer una comida y volver a marcarla no repite el aviso. Un día
+   libre no genera ninguno: no haber tenido plan no es un logro. */
+async function notifyDayCompleted(result) {
+  if (!result.newlyCompleted) return result;
+
+  const context = await repository.dayNotificationContext(result.dayLog.id);
+  if (context?.day_type === 'planned')
+    await notifications.createOnce({
+      userId: context.trainer_id,
+      type: 'nutrition_day_completed',
+      title: 'Día de alimentación completado',
+      body: `${context.athlete_first_name} ${context.athlete_last_name} completó ${context.day_name} de “${context.plan_name}”.`,
+      link: `/entrenador/atleta-detalle.html?id=${context.athlete_id}&nutricion=${result.dayLog.id}`,
+    });
+
+  return result;
+}
+
+export async function openDay(athleteId, nutritionDayId, weekNumber) {
+  return notifyDayCompleted(
+    assertLog(await repository.openDay(athleteId, nutritionDayId, weekNumber)),
+  );
+}
+
+export async function logMeal(athleteId, dayLogId, mealId, input) {
+  return notifyDayCompleted(
+    assertLog(await repository.logMeal(athleteId, dayLogId, mealId, input)),
+  );
+}
+
+export async function unlogMeal(athleteId, dayLogId, mealId) {
+  return assertLog(await repository.unlogMeal(athleteId, dayLogId, mealId));
+}
+
+/* Cuadrícula de cumplimiento: una entrada por semana y día registrado.
+
+   `status` resume la franja para que la pantalla no repita la regla: cumplido
+   si el día está cerrado, a medias si hay algo marcado y nada más. Un día que
+   el atleta nunca abrió sencillamente no aparece, igual que en las rutinas. */
+export async function planProgress(id, user) {
+  const plan = await getPlan(id, user);
+  if (!plan.athlete_id) return { plan, progress: [] };
+
+  const rows = await repository.planProgress(plan.origin_plan_id || plan.id, plan.athlete_id);
+
+  const progress = rows.map((row) => ({
+    weekNumber: row.week_number,
+    dayOrder: row.day_order,
+    dayType: row.day_type,
+    completedAt: row.completed_at,
+    startedAt: row.started_at,
+    /* El mapa de cumplimiento compartido con las rutinas lee estos dos
+       nombres, así que se conservan aunque aquí sean comidas y no ejercicios. */
+    completedExercises: row.logged_meals,
+    totalExercises: row.total_meals,
+    /* Cuántas comidas se cambiaron o se saltaron. Un día cumplido a base de
+       sustituciones no es lo mismo que uno seguido al pie de la letra, y el
+       entrenador necesita distinguirlo. */
+    offPlanMeals: row.off_plan_meals,
+    status: row.completed_at ? 'completed' : 'in_progress',
+  }));
+
+  return { plan, progress };
+}

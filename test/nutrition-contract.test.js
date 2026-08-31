@@ -126,3 +126,50 @@ test('el módulo de dibujado se comparte y no está duplicado', async () => {
   for (const source of usuarios)
     assert.ok(!source.includes('plan-meal-head'), 'el dibujado vive solo en el módulo compartido');
 });
+
+test('la pantalla del atleta permite marcar cada comida', async () => {
+  const [modulo, rutas, migracion] = await Promise.all([
+    read('../public/js/atleta/nutricion.js'),
+    read('../src/routes/nutrition.routes.js'),
+    read('../database/migrations/008_registro_nutricion.sql'),
+  ]);
+
+  /* Los tres estados viven en el enum de PostgreSQL, en la validación y en los
+     botones de la pantalla. Añadir uno en un solo sitio rompería el guardado
+     con un error de tipo en vez de un mensaje legible. */
+  const enBase = migracion
+    .match(/CREATE TYPE nutrition_log_status AS ENUM \(([^)]+)\)/)[1]
+    .match(/'([^']+)'/g)
+    .map((valor) => valor.slice(1, -1));
+
+  /* La expresión se ancla a la ruta del registro. Sin anclarla capturaba el
+     `status` del PLAN —draft, active, archived—, que aparece antes en el
+     archivo, y la prueba comparaba dos listas que no tienen nada que ver. */
+  const enValidacion = rutas
+    .match(/'\/logs\/:id\/meals\/:mealId',[\s\S]*?status: z\.enum\(\[([^\]]+)\]\)/)[1]
+    .match(/'([^']+)'/g)
+    .map((valor) => valor.slice(1, -1));
+
+  assert.deepEqual(enValidacion, enBase);
+  for (const estado of enBase)
+    assert.match(modulo, new RegExp(`value: '${estado}'`), `la pantalla debe ofrecer ${estado}`);
+
+  assert.match(modulo, /api\('\/api\/nutrition\/logs'/, 'abre el día');
+  assert.match(modulo, /method: 'DELETE'/, 'y puede desmarcar');
+
+  /* El recuento y el cierre del día los decide el servidor. Si la pantalla los
+     calculara por su cuenta, dos pestañas abiertas dirían cosas distintas. */
+  assert.match(modulo, /result\.dayLog\.completed_at/, 'el cierre viene del servidor');
+  assert.match(modulo, /result\.loggedMeals/, 'y el recuento también');
+});
+
+test('las rutas de registro se declaran fuera de la rama de planes', async () => {
+  const rutas = await read('../src/routes/nutrition.routes.js');
+
+  /* `/logs` no cuelga de `/plans/:id`: un registro no es un plan y meterlo
+     ahí lo habría capturado el parámetro. */
+  assert.match(rutas, /router\.post\(\s*'\/logs'/);
+  assert.match(rutas, /router\.put\(\s*'\/logs\/:id\/meals\/:mealId'/);
+  assert.match(rutas, /router\.delete\(\s*'\/logs\/:id\/meals\/:mealId'/);
+  assert.match(rutas, /router\.get\('\/plans\/:id\/progress'/);
+});

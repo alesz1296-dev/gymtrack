@@ -152,5 +152,5 @@ UPDATE users SET email_verified_at = NOW() WHERE email = 'persona@ejemplo.com';
 - Utilizar almacenamiento privado externo para fotografías y adjuntos.
 - Configurar respaldos automáticos.
 - Revisar las obligaciones de privacidad y datos de salud del país donde se opere.
-- Retirar las cuentas demo.
+- Comprobar que no queden cuentas de prueba en la base antes de abrirla a personas reales.
 - Ejecutar pruebas de autorización y recuperación ante fallos.

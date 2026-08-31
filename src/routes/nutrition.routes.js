@@ -179,7 +179,13 @@ router.post(
   validate(planInput),
   asyncHandler(controller.createPlan),
 );
+/* Antes de `/plans/:id` no hace falta ningún cuidado especial porque no hay
+   segmentos literales bajo `/plans/`, pero sí importa que `/logs` se declare
+   fuera de esa rama: un registro no es un plan. */
 router.get('/plans/:id', asyncHandler(controller.plan));
+/* La cuadrícula de cumplimiento. La consultan los dos roles: el atleta para
+   ver qué días lleva y el entrenador para ver la adherencia. */
+router.get('/plans/:id/progress', asyncHandler(controller.progress));
 router.put(
   '/plans/:id',
   requireRole('trainer'),
@@ -194,6 +200,44 @@ router.put(
   requireRole('trainer'),
   validate(z.object({ status: z.enum(['active', 'archived']) })),
   asyncHandler(controller.setPlanStatus),
+);
+
+/* ---------- Registro del atleta ---------- */
+
+/* Abre el día del plan y devuelve lo que ya estuviera marcado. Es el
+   equivalente de `POST /workouts/start` en las rutinas. */
+router.post(
+  '/logs',
+  requireRole('athlete'),
+  validate(
+    z.object({
+      nutritionDayId: z.uuid(),
+      weekNumber: z.number().int().min(1).max(52).default(1),
+    }),
+  ),
+  asyncHandler(controller.openDay),
+);
+
+/* Marcar una comida es la acción más frecuente de toda la aplicación: pasa
+   entre tres y seis veces al día, todos los días. Por eso el estado tiene
+   valor por defecto y la nota es opcional: el caso normal es un solo toque
+   sin escribir nada. */
+router.put(
+  '/logs/:id/meals/:mealId',
+  requireRole('athlete'),
+  validate(
+    z.object({
+      status: z.enum(['done', 'swapped', 'skipped']).default('done'),
+      notes: z.string().max(500).optional(),
+    }),
+  ),
+  asyncHandler(controller.logMeal),
+);
+
+router.delete(
+  '/logs/:id/meals/:mealId',
+  requireRole('athlete'),
+  asyncHandler(controller.unlogMeal),
 );
 
 export default router;

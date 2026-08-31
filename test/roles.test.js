@@ -89,11 +89,16 @@ test('las rutas reservadas a un rol lo declaran', async () => {
     ['nutrition', 'put', '/foods/:id', 'trainer'],
     ['nutrition', 'delete', '/foods/:id', 'trainer'],
     ['nutrition', 'get', '/foods/library', 'trainer'],
+    ['nutrition', 'put', '/plans/:id', 'trainer'],
+    ['nutrition', 'put', '/plans/:id/status', 'trainer'],
     ['tracking', 'put', '/checkins/:id/review', 'trainer'],
     /* Solo el atleta ejecuta y registra. */
     ['routines', 'get', '/history', 'athlete'],
     ['links', 'post', '/accept', 'athlete'],
     ['tracking', 'post', '/checkins', 'athlete'],
+    ['nutrition', 'post', '/logs', 'athlete'],
+    ['nutrition', 'put', '/logs/:id/meals/:mealId', 'athlete'],
+    ['nutrition', 'delete', '/logs/:id/meals/:mealId', 'athlete'],
   ];
 
   for (const [archivo, metodo, ruta, rol] of esperado) {
