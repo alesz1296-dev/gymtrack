@@ -16,9 +16,3 @@ export async function review(req, res) {
     checkin: await service.reviewCheckin(req.session.user, req.params.id, req.body.feedback),
   });
 }
-export async function addNutrition(req, res) {
-  res.status(201).json({ plan: await service.createNutritionPlan(req.session.user, req.body) });
-}
-export async function nutrition(req, res) {
-  res.json({ plans: await service.nutritionPlans(req.session.user) });
-}

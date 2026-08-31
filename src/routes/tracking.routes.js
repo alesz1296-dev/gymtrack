@@ -52,26 +52,6 @@ r.put(
   validate(z.object({ feedback: z.string().min(1).max(3000) })),
   asyncHandler(c.review),
 );
-r.get('/nutrition', asyncHandler(c.nutrition));
-r.post(
-  '/nutrition',
-  requireRole('trainer'),
-  validate(
-    z.object({
-      athleteId: z.uuid(),
-      name: z.string().min(2).max(140),
-      description: z.string().max(3000).optional(),
-      calories: n(1, 20000),
-      proteinG: n(0, 2000),
-      carbsG: n(0, 3000),
-      fatsG: n(0, 2000),
-      fiberG: n(0, 500),
-      waterMl: n(0, 20000),
-      meals: z
-        .array(z.object({ name: z.string().min(1).max(100), details: z.string().min(1).max(5000) }))
-        .min(1),
-    }),
-  ),
-  asyncHandler(c.addNutrition),
-);
+/* Los planes de alimentación vivían aquí cuando eran un solo formulario.
+   Al crecer se separaron a su propio módulo, en `/api/nutrition`. */
 export default r;

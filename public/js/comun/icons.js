@@ -15,6 +15,10 @@ const paths = {
     '<rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><path d="M9 3.5V2.8h6v.7"/><path d="M8.5 9.5h7"/><path d="M8.5 13h7"/><path d="M8.5 16.5h4"/>',
   nutricion:
     '<path d="M12 7.5c0-2.2 1.7-4 3.9-4 .2 2.2-1.5 4-3.9 4z"/><path d="M12 7.5c-2.6 0-4.7 1.6-5.5 4-1.1 3.3.6 8.3 3 8.3 1 0 1.6-.6 2.5-.6s1.5.6 2.5.6c2.4 0 4.1-5 3-8.3-.8-2.4-2.9-4-5.5-4z"/>',
+  /* Cubiertos: la biblioteca de alimentos, frente a la manzana que ya
+     representa el plan de nutrición. Se distinguen de un vistazo en el menú. */
+  alimentos:
+    '<path d="M5 3v5a2.5 2.5 0 0 0 5 0V3"/><path d="M7.5 3v5"/><path d="M7.5 10.5V21"/><path d="M17.5 3c-1.6 1.6-2.5 3.7-2.5 6 0 1.7 1.1 2.8 2.5 2.8V21"/>',
   checkins:
     '<rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><path d="M9 3.5V2.8h6v.7"/><path d="m8.8 12.5 2.2 2.2 4.2-4.4"/>',
   mensajes:

@@ -1,89 +1,151 @@
-/* Planes nutricionales del entrenador: formulario para asignar un plan a
-   un atleta vinculado y lista de los planes activos que ya creó. */
+/* Planes de nutrición del entrenador. La lista muestra un resumen de cada
+   plan y, al pulsar "Ver plan", se despliega debajo la semana completa con
+   sus comidas y totales sin abandonar la pantalla.
+
+   Es la misma estructura que la pantalla de rutinas, a propósito: son la
+   misma tarea del entrenador y no tienen por qué funcionar distinto. */
 
 import { initNavigation } from '../comun/navigation.js';
-import { api, formData, showMessage } from '../comun/api.js';
+import { api, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
+import { icon } from '../comun/icons.js';
+import { renderPlanWeek, renderGoals, durationLabel } from '../comun/plan-detalle.js';
 
 await initNavigation();
 
+const list = document.querySelector('#plans');
+const detail = document.querySelector('#detail');
 const message = document.querySelector('#message');
 
-/* El plan se asigna a un atleta concreto, así que el desplegable se llena
-   con las personas vinculadas al entrenador. */
-const { people } = await api('/api/links/people');
+/* Alterna entre los planes vigentes y los guardados. Se declara aquí arriba
+   porque el dibujado de cada tarjeta lo consulta para decidir si ofrece
+   "Archivar" o "Restaurar". */
+let viendoArchivados = false;
 
-document.querySelector('#athlete').innerHTML = people
-  .map(
-    (person) =>
-      `<option value="${person.id}">` +
-      `${escapeHtml(person.first_name)} ${escapeHtml(person.last_name)}` +
-      `</option>`,
-  )
-  .join('');
+/* ---------- Resumen de la lista ---------- */
 
-/* Los objetivos nutricionales son opcionales: un campo vacío se envía como
-   nulo, no como cero, para no confundir "sin objetivo" con "cero calorías". */
-const number = (value) => (value === '' ? null : Number(value));
+function renderPlanCard(plan) {
+  const destinatario = plan.athlete_first_name
+    ? `${escapeHtml(plan.athlete_first_name)} ${escapeHtml(plan.athlete_last_name)}`
+    : 'Sin asignar';
 
-/* ---------- Planes existentes ---------- */
-
-function renderMeal(meal) {
-  return `
-      <strong>${escapeHtml(meal.name)}</strong>
-      <p>${escapeHtml(meal.details)}</p>`;
-}
-
-function renderPlan(plan) {
-  const atleta = `${escapeHtml(plan.athlete_first_name)} ${escapeHtml(plan.athlete_last_name)}`;
+  const dias = plan.planned_days ?? 0;
 
   return `
-    <article class="list-item">
-      <span class="badge">${atleta}</span>
-      <h3>${escapeHtml(plan.name)}</h3>
-      <p>${plan.calories || '—'} kcal · ${plan.protein_g || '—'} g proteína</p>
-      ${plan.meals.map(renderMeal).join('')}
+    <article class="card">
+      <div class="actions">
+        <span class="badge">${escapeHtml(plan.status)}</span>
+        <span class="badge neutral">${durationLabel(plan.weeks)}</span>
+      </div>
+      <h2>${escapeHtml(plan.name)}</h2>
+      <p>${escapeHtml(plan.description || 'Sin descripción')}</p>
+      <p><small>${destinatario} · ${dias} día${dias === 1 ? '' : 's'} con plan</small></p>
+      <div class="actions">
+        <button class="btn secondary small" data-view="${plan.id}">Ver plan</button>
+        <a class="btn small" href="nutricion-formulario.html?id=${plan.id}">Modificar</a>
+        <a class="btn secondary small" href="nutricion-formulario.html?duplicar=${plan.id}">
+          ${icon('copiar')}Duplicar
+        </a>
+        ${
+          viendoArchivados
+            ? `<button class="btn secondary small" data-status="${plan.id}" data-to="active">
+                 Restaurar
+               </button>`
+            : `<button class="btn secondary small" data-status="${plan.id}" data-to="archived">
+                 ${icon('basura')}Archivar
+               </button>`
+        }
+      </div>
     </article>`;
 }
 
-async function load() {
-  const { plans } = await api('/api/tracking/nutrition');
+/* ---------- Detalle desplegable ---------- */
 
-  document.querySelector('#plans').innerHTML = plans.length
-    ? plans.map(renderPlan).join('')
-    : '<div class="empty">Sin planes activos.</div>';
+function renderPlanDetail(plan) {
+  return `
+    <article class="card">
+      <header class="page-header">
+        <div>
+          <div class="actions">
+            <span class="badge">${escapeHtml(plan.status)}</span>
+            <span class="badge neutral">${durationLabel(plan.weeks)}</span>
+            <span class="badge neutral">Semana ${plan.currentWeek} de ${plan.weeks || 1}</span>
+          </div>
+          <h2>${escapeHtml(plan.name)}</h2>
+          <p>${escapeHtml(plan.description || 'Sin descripción')}</p>
+        </div>
+        <div class="actions">
+          <a class="btn" href="nutricion-formulario.html?id=${plan.id}">Modificar plan</a>
+          <a class="btn secondary" href="nutricion-formulario.html?duplicar=${plan.id}">
+            ${icon('copiar')}Duplicar
+          </a>
+        </div>
+      </header>
+      ${renderGoals(plan)}
+      <h3 class="mt">La semana</h3>
+      ${renderPlanWeek(plan)}
+    </article>`;
 }
 
-/* ---------- Alta de un plan ---------- */
-
-document.querySelector('#nutrition').onsubmit = async (event) => {
-  event.preventDefault();
-
-  const data = formData(event.target);
-
+async function openPlan(id) {
   try {
-    await api('/api/tracking/nutrition', {
-      method: 'POST',
-      body: JSON.stringify({
-        athleteId: data.athleteId,
-        name: data.name,
-        description: data.description,
-        calories: number(data.calories),
-        proteinG: number(data.proteinG),
-        carbsG: number(data.carbsG),
-        fatsG: number(data.fatsG),
-        /* Este primer formulario crea una sola comida; la API ya acepta
-           varias y la pantalla podrá ampliarse sin tocar el servidor. */
-        meals: [{ name: data.mealName, details: data.mealDetails }],
-      }),
-    });
-
-    event.target.reset();
-    showMessage(message, 'Plan asignado correctamente');
-    load();
+    const { plan } = await api(`/api/nutrition/plans/${id}`);
+    detail.innerHTML = renderPlanDetail(plan);
+    detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     showMessage(message, error.message, 'error');
   }
+}
+
+/* ---------- Archivar y restaurar ---------- */
+
+/* Se archiva en vez de borrar: el atleta registrará su cumplimiento sobre
+   estos planes, y eliminarlos destruiría ese historial. */
+async function cambiarEstado(id, status) {
+  try {
+    await api(`/api/nutrition/plans/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    });
+    detail.innerHTML = ''; // El detalle abierto puede ser el del plan movido.
+    await cargar();
+    showMessage(message, status === 'archived' ? 'Plan archivado.' : 'Plan restaurado.', 'success');
+  } catch (error) {
+    showMessage(message, error.message, 'error');
+  }
+}
+
+/* ---------- Carga de la lista ---------- */
+
+async function cargar() {
+  try {
+    const { plans } = await api(`/api/nutrition/plans?archived=${viendoArchivados}`);
+
+    const vacio = viendoArchivados
+      ? 'No tienes planes archivados.'
+      : 'Aún no has creado planes de alimentación.';
+    list.innerHTML = plans.length
+      ? plans.map(renderPlanCard).join('')
+      : `<div class="empty">${vacio}</div>`;
+
+    /* Los manejadores se vuelven a enlazar tras cada dibujado. */
+    list.querySelectorAll('[data-view]').forEach((button) => {
+      button.onclick = () => openPlan(button.dataset.view);
+    });
+    list.querySelectorAll('[data-status]').forEach((button) => {
+      button.onclick = () => cambiarEstado(button.dataset.status, button.dataset.to);
+    });
+  } catch (error) {
+    showMessage(message, error.message, 'error');
+  }
+}
+
+const toggle = document.querySelector('#toggle-archived');
+toggle.onclick = async () => {
+  viendoArchivados = !viendoArchivados;
+  toggle.textContent = viendoArchivados ? 'Ver planes activos' : 'Ver archivados';
+  detail.innerHTML = '';
+  await cargar();
 };
 
-load();
+await cargar();

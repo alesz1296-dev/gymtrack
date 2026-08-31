@@ -70,6 +70,10 @@ test('las rutas reservadas a un rol lo declaran', async () => {
     routines: await readFile(new URL('../src/routes/routines.routes.js', import.meta.url), 'utf8'),
     links: await readFile(new URL('../src/routes/links.routes.js', import.meta.url), 'utf8'),
     tracking: await readFile(new URL('../src/routes/tracking.routes.js', import.meta.url), 'utf8'),
+    nutrition: await readFile(
+      new URL('../src/routes/nutrition.routes.js', import.meta.url),
+      'utf8',
+    ),
   };
 
   const esperado = [
@@ -80,7 +84,11 @@ test('las rutas reservadas a un rol lo declaran', async () => {
     ['routines', 'post', '/exercises', 'trainer'],
     ['routines', 'delete', '/exercises/:id', 'trainer'],
     ['links', 'post', '/invitations', 'trainer'],
-    ['tracking', 'post', '/nutrition', 'trainer'],
+    ['nutrition', 'post', '/plans', 'trainer'],
+    ['nutrition', 'post', '/foods', 'trainer'],
+    ['nutrition', 'put', '/foods/:id', 'trainer'],
+    ['nutrition', 'delete', '/foods/:id', 'trainer'],
+    ['nutrition', 'get', '/foods/library', 'trainer'],
     ['tracking', 'put', '/checkins/:id/review', 'trainer'],
     /* Solo el atleta ejecuta y registra. */
     ['routines', 'get', '/history', 'athlete'],
@@ -108,7 +116,14 @@ test('toda ruta de la API exige haber iniciado sesión', async () => {
      `auth` queda fuera: entrar, registrarse y recuperar la contraseña son
      públicos por definición, y sus rutas privadas llevan `requireAuth` una a
      una. */
-  for (const archivo of ['links', 'routines', 'tracking', 'messages', 'notifications']) {
+  for (const archivo of [
+    'links',
+    'routines',
+    'tracking',
+    'nutrition',
+    'messages',
+    'notifications',
+  ]) {
     const source = await readFile(
       new URL(`../src/routes/${archivo}.routes.js`, import.meta.url),
       'utf8',

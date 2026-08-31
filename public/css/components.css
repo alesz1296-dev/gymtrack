@@ -21,6 +21,8 @@
 .grid { display: grid; gap: var(--sp-4); }
 .grid.two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .grid.three { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* Los cuatro macros de un alimento, que caben en fila dentro de una tarjeta */
+.grid.four { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: var(--sp-3); }
 
 /* Mensajería: lista de conversaciones fija junto al hilo abierto */
 .grid.messages { grid-template-columns: 300px minmax(0, 1fr); align-items: start; }
@@ -926,3 +928,101 @@ button.list-item.active { border-color: var(--brand); background: var(--brand-so
   .card { padding: var(--sp-4); }
   .bubble { max-width: 88%; }
 }
+
+/* ---------- Planes de alimentación ---------- */
+
+/* Un día del plan, en la vista de lectura. Mismo tratamiento que
+   `.routine-day`: separador arriba salvo en el primero. */
+.plan-day {
+  padding-top: var(--sp-4);
+  margin-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.plan-day:first-of-type { border-top: 0; margin-top: 0; }
+.plan-day.is-free { opacity: 0.85; }
+
+.plan-meals { display: grid; gap: var(--sp-3); }
+
+.plan-meal {
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+
+/* El nombre a la izquierda y la suma a la derecha, pero en móvil se apilan:
+   forzarlos en una línea partiría la suma por la mitad. */
+.plan-meal-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.plan-meal-head span { font-size: 13px; }
+.plan-meal p { margin: var(--sp-2) 0 0; font-size: 14px; }
+
+.plan-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+
+.plan-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: 14px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.plan-item:last-child { border-bottom: 0; }
+.plan-item-name small { margin-left: 6px; }
+.plan-item-macros { font-size: 12px; white-space: nowrap; }
+
+/* Total del día, en el constructor y en la vista de lectura. */
+.day-total {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-3) var(--sp-4);
+  margin-top: var(--sp-3);
+  background: var(--brand-soft);
+  border: 1px solid color-mix(in srgb, var(--brand) 26%, transparent);
+  border-radius: var(--r);
+}
+
+.day-total span { font-size: 14px; }
+
+/* ---------- Constructor de planes ---------- */
+
+.meal-block { background: var(--surface-2); }
+
+.meal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+/* El campo que se lleva el espacio sobrante de su fila. */
+.field.grow { flex: 1; margin-bottom: 0; }
+
+/* Un renglón: alimento, cantidad, unidad y el botón de quitar. En móvil el
+   selector ocupa toda la línea y la cantidad baja debajo, porque un `select`
+   con nombres largos y un número no caben juntos en una pantalla estrecha. */
+.item-row-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.item-row-line .field { margin-bottom: 0; }
+.item-row-line .field:not(.item-quantity) { flex: 1 1 220px; }
+.item-quantity { flex: 0 1 110px; }
+.item-unit { font-size: 13px; color: var(--muted); min-width: 62px; }
+.item-macros { display: block; margin-top: 6px; font-size: 12px; }
+
+.meal-total { margin: var(--sp-3) 0 0; font-size: 13px; }

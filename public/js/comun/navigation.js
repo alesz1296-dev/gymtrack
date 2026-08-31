@@ -16,6 +16,7 @@ const menus = {
       ['Invitaciones', '/entrenador/invitaciones.html', 'invitaciones'],
       ['Ejercicios', '/entrenador/ejercicios.html', 'ejercicios'],
       ['Rutinas', '/entrenador/rutinas.html', 'rutinas'],
+      ['Alimentos', '/entrenador/alimentos.html', 'alimentos'],
       ['Nutrición', '/entrenador/nutricion.html', 'nutricion'],
       ['Check-ins', '/entrenador/checkins.html', 'checkins'],
       ['Mensajes', '/compartido/mensajes.html', 'mensajes'],

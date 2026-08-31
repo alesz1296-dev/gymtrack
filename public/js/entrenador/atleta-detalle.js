@@ -17,6 +17,7 @@ import { escapeHtml } from '../comun/dom.js';
 import { icon } from '../comun/icons.js';
 import { renderCompliance } from '../comun/cumplimiento.js';
 import { renderMeasurementCharts, measurementSummary, METRICS } from '../comun/mediciones.js';
+import { durationLabel } from '../comun/plan-detalle.js';
 
 await initNavigation();
 
@@ -150,6 +151,8 @@ function renderCheckins(checkins) {
 
 /* ---------- Nutrición ---------- */
 
+/* Un resumen, no el plan entero: la semana completa vive en la pantalla de
+   nutrición y duplicarla aquí crearía dos sitios que mantener. */
 function nutritionItem(plan) {
   const macros = [
     plan.calories ? `${plan.calories} kcal` : '',
@@ -160,11 +163,17 @@ function nutritionItem(plan) {
     .filter(Boolean)
     .join(' · ');
 
+  const dias = plan.planned_days ?? 0;
+
   return `
     <div class="list-item">
       <strong>${escapeHtml(plan.name)}</strong>
+      <p>${durationLabel(plan.weeks)} · ${dias} día${dias === 1 ? '' : 's'} con plan</p>
       ${macros ? `<p>${escapeHtml(macros)}</p>` : ''}
       ${plan.description ? `<small class="muted">${escapeHtml(plan.description)}</small>` : ''}
+      <div class="actions mt">
+        <a class="btn secondary small" href="nutricion-formulario.html?id=${plan.id}">Modificar plan</a>
+      </div>
     </div>`;
 }
 
@@ -187,7 +196,7 @@ async function load() {
     api('/api/routines'),
     api('/api/routines/compliance'),
     api('/api/tracking/checkins'),
-    api('/api/tracking/nutrition'),
+    api('/api/nutrition/plans'),
   ]);
 
   /* La lista de vinculados es la que decide si esta ficha puede verse: el

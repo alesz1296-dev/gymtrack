@@ -19,6 +19,7 @@ import { pool } from '../src/config/database.js';
 import * as users from '../src/repositories/auth.repository.js';
 import * as links from '../src/services/links.service.js';
 import * as tracking from '../src/services/tracking.service.js';
+import * as nutrition from '../src/services/nutrition.service.js';
 import * as messages from '../src/services/messages.service.js';
 
 const marca = Date.now();
@@ -182,18 +183,29 @@ test('los datos de una pareja entrenador-atleta son invisibles para la otra', as
   });
 
   await t.test('un plan de nutrición exige vínculo activo', async () => {
+    /* Un plan es ahora una semana de siete franjas. Solo la primera tiene
+       comidas; lo que se comprueba aquí es el permiso, no la forma. */
     const plan = {
       name: 'Plan de prueba',
       calories: 2000,
-      meals: [{ name: 'Desayuno', details: 'Avena' }],
+      weeks: 1,
+      days: Array.from({ length: 7 }, (_, index) =>
+        index === 0
+          ? {
+              name: 'Día 1',
+              dayType: 'planned',
+              meals: [{ name: 'Desayuno', details: 'Avena', items: [] }],
+            }
+          : { name: `Día ${index + 1}`, dayType: 'free', meals: [] },
+      ),
     };
 
     await assert.rejects(
-      () => tracking.createNutritionPlan(entrenadorB, { ...plan, athleteId: atletaA.id }),
+      () => nutrition.createPlan(entrenadorB.id, { ...plan, athleteId: atletaA.id }),
       /no está vinculado contigo/,
     );
 
-    const creado = await tracking.createNutritionPlan(entrenadorA, {
+    const creado = await nutrition.createPlan(entrenadorA.id, {
       ...plan,
       athleteId: atletaA.id,
     });

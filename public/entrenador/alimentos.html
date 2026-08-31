@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Biblioteca de alimentos</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1>Biblioteca de alimentos</h1>
+          <p class="muted">Consulta los alimentos generales y administra los tuyos.</p>
+        </div>
+      </header>
+
+      <div id="message" hidden></div>
+
+      <form id="food-form" class="card">
+        <input name="id" type="hidden">
+        <h2 id="form-title">Crear alimento</h2>
+        <p class="muted">
+          Sirve tanto para un ingrediente como para un plato completo que prepares a menudo.
+          Los valores son los de una porción, y al usarlo en un plan se multiplican por la
+          cantidad que indiques.
+        </p>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="name">Nombre</label>
+            <input id="name" name="name" minlength="2" maxlength="140" required>
+          </div>
+          <div class="field">
+            <label for="category">Categoría</label>
+            <input id="category" name="category" maxlength="80" list="categories"
+              placeholder="Proteínas, Carbohidratos...">
+            <datalist id="categories">
+              <option value="Proteínas"></option>
+              <option value="Carbohidratos"></option>
+              <option value="Grasas"></option>
+              <option value="Verduras"></option>
+              <option value="Frutas"></option>
+              <option value="Lácteos"></option>
+              <option value="Bebidas"></option>
+              <option value="Plato preparado"></option>
+            </datalist>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="servingSize">Porción</label>
+            <input id="servingSize" name="servingSize" type="number" step=".01" min=".01"
+              value="100" required>
+          </div>
+          <div class="field">
+            <label for="servingUnit">Unidad</label>
+            <select id="servingUnit" name="servingUnit" required>
+              <option value="g">gramos</option>
+              <option value="ml">mililitros</option>
+              <option value="unidad">unidad</option>
+              <option value="taza">taza</option>
+              <option value="cucharada">cucharada</option>
+              <option value="rebanada">rebanada</option>
+              <option value="porción">porción</option>
+            </select>
+          </div>
+        </div>
+
+        <h3>Valores por porción</h3>
+        <p class="muted">Puedes dejar en blanco lo que no conozcas; se guarda como “sin dato”.</p>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="calories">Calorías (kcal)</label>
+            <input id="calories" name="calories" type="number" step=".01" min="0">
+          </div>
+          <div class="field">
+            <label for="proteinG">Proteína (g)</label>
+            <input id="proteinG" name="proteinG" type="number" step=".01" min="0">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="carbsG">Carbohidratos (g)</label>
+            <input id="carbsG" name="carbsG" type="number" step=".01" min="0">
+          </div>
+          <div class="field">
+            <label for="fatsG">Grasas (g)</label>
+            <input id="fatsG" name="fatsG" type="number" step=".01" min="0">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="fiberG">Fibra (g)</label>
+          <input id="fiberG" name="fiberG" type="number" step=".01" min="0">
+        </div>
+
+        <div class="field">
+          <label for="notes">Notas o preparación</label>
+          <textarea id="notes" name="notes" maxlength="3000"></textarea>
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="submit" id="save">Guardar alimento</button>
+          <button class="btn secondary" type="button" id="cancel" hidden>Cancelar edición</button>
+        </div>
+      </form>
+
+      <section class="mt">
+        <h2>Mis alimentos</h2>
+        <div id="custom-foods" class="grid two"></div>
+      </section>
+
+      <section class="mt">
+        <h2>Alimentos generales</h2>
+        <p class="muted">
+          Valores de referencia aproximados, disponibles para todos los entrenadores; no se
+          modifican desde tu cuenta. Si usas etiquetas distintas, crea tu propia versión.
+        </p>
+        <div class="field">
+          <label for="search">Buscar</label>
+          <input id="search" type="search" placeholder="Nombre o categoría">
+        </div>
+        <div id="public-foods" class="grid two"></div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/js/entrenador/alimentos.js"></script>
+</body>
+
+</html>

@@ -4,7 +4,6 @@ import { HttpError } from '../utils/http-error.js';
 import * as notifications from './notifications.service.js';
 export const measurements = repo.measurements;
 export const checkins = repo.checkins;
-export const nutritionPlans = repo.nutritionPlans;
 async function authorizedAthlete(user, requested) {
   if (user.role === 'athlete') {
     if (requested && requested !== user.id) throw new HttpError(403, 'Sin permiso');
@@ -38,7 +37,9 @@ export async function createCheckin(user, input) {
     userId: input.trainerId,
     type: 'checkin_submitted',
     title: 'Nuevo check-in',
-    body: `${user.first_name} ${user.last_name} envió su check-in.`,
+    /* El usuario viene de la sesión, donde `sessionUser` guarda los nombres en
+       camelCase. Con `first_name` el aviso decía "undefined undefined". */
+    body: `${user.firstName} ${user.lastName} envió su check-in.`,
     link: '/entrenador/checkins.html',
   });
   return checkin;
@@ -54,8 +55,4 @@ export async function reviewCheckin(user, id, feedback) {
     link: `/atleta/checkin.html?checkin=${result.id}`,
   });
   return result;
-}
-export async function createNutritionPlan(user, input) {
-  await authorizedAthlete(user, input.athleteId);
-  return repo.createNutritionPlan(user.id, input);
 }

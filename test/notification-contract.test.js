@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
 test('las rutas, la bandeja y los eventos están conectados', async () => {
-  const [app, routes, navigation, page, screen, routine, tracking, links, messages] =
+  const [app, routes, navigation, page, screen, routine, tracking, nutrition, links, messages] =
     await Promise.all([
       read('../src/app.js'),
       read('../src/routes/notifications.routes.js'),
@@ -14,6 +14,7 @@ test('las rutas, la bandeja y los eventos están conectados', async () => {
       read('../public/js/compartido/notificaciones.js'),
       read('../src/services/routines.service.js'),
       read('../src/services/tracking.service.js'),
+      read('../src/services/nutrition.service.js'),
       read('../src/services/links.service.js'),
       read('../src/services/messages.service.js'),
     ]);
@@ -27,7 +28,7 @@ test('las rutas, la bandeja y los eventos están conectados', async () => {
   assert.match(screen, /value\.startsWith\('\/'\)/, 'solo abre rutas internas');
   assert.match(screen, /api\('\/api\/notifications\/read-all'/);
 
-  const events = [routine, tracking, links, messages].join('\n');
+  const events = [routine, tracking, nutrition, links, messages].join('\n');
   for (const type of [
     'routine_assigned',
     'routine_updated',
@@ -37,6 +38,7 @@ test('las rutas, la bandeja y los eventos están conectados', async () => {
     'checkin_reviewed',
     'invitation_accepted',
     'message_received',
+    'nutrition_assigned',
   ])
     assert.match(events, new RegExp(`type: '${type}'`), `falta conectar ${type}`);
 });

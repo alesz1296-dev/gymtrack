@@ -12,6 +12,7 @@ import linkRoutes from './routes/links.routes.js';
 import routineRoutes from './routes/routines.routes.js';
 import trackingRoutes from './routes/tracking.routes.js';
 import messageRoutes from './routes/messages.routes.js';
+import nutritionRoutes from './routes/nutrition.routes.js';
 import notificationRoutes from './routes/notifications.routes.js';
 import { attachCsrf, verifyCsrf } from './middleware/csrf.js';
 import { errorHandler, notFound } from './middleware/errors.js';
@@ -74,6 +75,7 @@ app.use(
 app.use('/api/links', linkRoutes);
 app.use('/api/routines', routineRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/nutrition', nutritionRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.get('/api/health', async (req, res, next) => {

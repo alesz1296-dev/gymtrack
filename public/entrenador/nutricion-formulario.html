@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Nuevo plan de alimentación</title>
+  <script src="/js/comun/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" data-sidebar></aside>
+
+    <main class="page">
+      <header class="page-header">
+        <div>
+          <h1 id="page-title">Nuevo plan de alimentación</h1>
+          <p class="muted" id="page-description">Arma la semana completa y elige cuánto tiempo se repite.</p>
+        </div>
+        <div class="top-actions">
+          <a class="btn secondary" href="nutricion.html">Volver</a>
+        </div>
+      </header>
+
+      <div id="message" hidden></div>
+
+      <div id="copy-notice" class="notice" hidden>
+        Estás preparando un plan nuevo. El original no cambiará.
+      </div>
+
+      <div class="notice">
+        Los planes de alimentación profesionales debe prepararlos personal autorizado según las
+        reglas de tu país. Los valores de la biblioteca son de referencia y aproximados.
+      </div>
+
+      <form id="plan">
+        <section class="card">
+          <h2>Datos del plan</h2>
+          <div class="form-row">
+            <div class="field">
+              <label for="name">Nombre</label>
+              <input id="name" name="name" minlength="2" maxlength="140" required>
+            </div>
+            <div class="field">
+              <label for="athlete">Atleta</label>
+              <select id="athlete" name="athleteId" required></select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="description">Descripción</label>
+            <textarea id="description" name="description" maxlength="3000"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="startDate">Fecha inicial</label>
+              <input id="startDate" name="startDate" type="date">
+            </div>
+            <div class="field">
+              <label for="weeks">Duración</label>
+              <div class="chip-group" id="weeks-options" role="group" aria-label="Duración del plan"></div>
+              <input id="weeks" name="weeks" type="number" min="1" max="52" value="1" hidden>
+              <small>La misma semana se repite durante todo el plan.</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="card mt">
+          <h2>Objetivos diarios</h2>
+          <p class="muted">
+            Opcionales. Son la meta del día; el plan te muestra cuánto suman las comidas
+            que armes, para que puedas compararlo.
+          </p>
+          <div class="form-row">
+            <div class="field">
+              <label for="calories">Calorías (kcal)</label>
+              <input id="calories" name="calories" type="number" step="1" min="1">
+            </div>
+            <div class="field">
+              <label for="proteinG">Proteína (g)</label>
+              <input id="proteinG" name="proteinG" type="number" step=".1" min="0">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="carbsG">Carbohidratos (g)</label>
+              <input id="carbsG" name="carbsG" type="number" step=".1" min="0">
+            </div>
+            <div class="field">
+              <label for="fatsG">Grasas (g)</label>
+              <input id="fatsG" name="fatsG" type="number" step=".1" min="0">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="fiberG">Fibra (g)</label>
+              <input id="fiberG" name="fiberG" type="number" step=".1" min="0">
+            </div>
+            <div class="field">
+              <label for="waterMl">Agua (ml)</label>
+              <input id="waterMl" name="waterMl" type="number" step="1" min="0">
+            </div>
+          </div>
+        </section>
+
+        <section class="card mt">
+          <h2>La semana</h2>
+          <p class="muted">Elige un día para editarlo. Los días libres no necesitan comidas.</p>
+
+          <div class="day-tabs" id="day-tabs" role="tablist" aria-label="Días de la semana"></div>
+
+          <div id="day-editor"></div>
+        </section>
+
+        <div class="actions mt">
+          <button class="btn" type="submit" id="submit-button">Guardar y activar</button>
+          <a class="btn secondary" href="nutricion.html">Cancelar</a>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script type="module" src="/js/entrenador/nutricion-formulario.js"></script>
+</body>
+
+</html>

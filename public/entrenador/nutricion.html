@@ -20,63 +20,22 @@
       <header class="page-header">
         <div>
           <h1>Planes de nutrición</h1>
-          <p class="muted">Metas y comidas sugeridas para cada atleta.</p>
+          <p class="muted">Consulta, modifica y duplica los planes que has creado.</p>
+        </div>
+        <div class="top-actions">
+          <button type="button" class="btn secondary" id="toggle-archived">Ver archivados</button>
+          <a class="btn" href="nutricion-formulario.html">Crear plan</a>
         </div>
       </header>
 
       <div id="message" hidden></div>
 
-      <div class="grid two">
-        <form id="nutrition" class="card">
-          <h2>Nuevo plan</h2>
-          <div class="field">
-            <label for="athlete">Atleta</label>
-            <select id="athlete" name="athleteId" required></select>
-          </div>
-          <div class="field">
-            <label for="name">Nombre</label>
-            <input id="name" name="name" required>
-          </div>
-          <div class="form-row">
-            <div class="field">
-              <label for="calories">Calorías</label>
-              <input id="calories" name="calories" type="number">
-            </div>
-            <div class="field">
-              <label for="proteinG">Proteína (g)</label>
-              <input id="proteinG" name="proteinG" type="number" step=".1">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="field">
-              <label for="carbsG">Carbohidratos (g)</label>
-              <input id="carbsG" name="carbsG" type="number" step=".1">
-            </div>
-            <div class="field">
-              <label for="fatsG">Grasas (g)</label>
-              <input id="fatsG" name="fatsG" type="number" step=".1">
-            </div>
-          </div>
-          <div class="field">
-            <label for="description">Descripción</label>
-            <textarea id="description" name="description"></textarea>
-          </div>
-          <div class="field">
-            <label for="mealName">Nombre de la comida</label>
-            <input id="mealName" name="mealName" value="Plan diario" required>
-          </div>
-          <div class="field">
-            <label for="mealDetails">Alimentos, cantidades y alternativas</label>
-            <textarea id="mealDetails" name="mealDetails" required></textarea>
-          </div>
-          <button class="btn">Asignar plan</button>
-        </form>
-
-        <section>
-          <h2>Planes activos</h2>
-          <div id="plans" class="list"></div>
-        </section>
+      <div id="plans" class="grid two">
+        <div class="skeleton skeleton-card"></div>
+        <div class="skeleton skeleton-card"></div>
       </div>
+
+      <section id="detail" class="mt"></section>
     </main>
   </div>
 

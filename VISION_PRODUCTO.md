@@ -2134,3 +2134,123 @@ Lo siguiente, por orden de valor:
 3. **Cabos menores**: limpieza periódica de `auth_tokens`, `sslmode=verify-full` antes de subir a `pg` 9, y quitar del `README` la línea que pide retirar unas cuentas demo que ya no existen.
 
 **Sugerencia de mantenimiento pendiente de decisión.** Este documento supera las 2.100 líneas y crece de forma lineal, así que recuperar el contexto obliga a leerlo casi entero. Se propuso añadir arriba una sección «Estado actual» reescrita en cada sesión, dejando debajo el historial cronológico intacto; el resumen de esta sección puede servir de primera versión.
+
+## Continuación del 31 de agosto de 2026
+
+El usuario pidió releer este documento completo, un resumen del estado y una revisión del código. Después señaló que **la parte de nutrición está mucho más simple que la de rutinas y seguimiento**, y pidió una propuesta antes de tocar nada.
+
+Se comprobó primero el estado real: rama `main`, árbol limpio, último commit `ac6b766` (14 de agosto). **El repositorio llevaba diecisiete días sin cambios** y no había nada a medias.
+
+### Revisión del código, hallazgos nuevos
+
+Se leyó el código y no solo esta bitácora. Se ejecutaron las 36 pruebas puras (pasan), `format:check` (conforme), `node --check` sobre los 60+ archivos (sin errores) y `npm audit` (sin vulnerabilidades). **No se ejecutaron las pruebas que tocan la base** en ese momento, por la regla ya establecida.
+
+**Un error real encontrado.** `src/services/tracking.service.js` componía el aviso de check-in con `user.first_name` y `user.last_name`, pero el usuario viene de la sesión, donde `sessionUser` guarda los nombres en camelCase. **El entrenador recibía «undefined undefined envió su check-in.»** Era el único punto de `src` donde se mezclaban las dos convenciones. Corregido en esta sesión.
+
+**Riesgos estructurales anotados, no corregidos:** `.env` y `npm test` siguen apuntando a la base publicada; `ssl: { rejectUnauthorized: false }` cifra pero no verifica el certificado, que es la otra cara del pendiente de `sslmode=verify-full`; y **nada ejecuta las pruebas automáticamente**, no hay integración continua.
+
+### Diagnóstico de nutrición
+
+Comparada con rutinas, nutrición se quedó en el MVP del 7 de agosto: plan plano sin días, **una sola comida** desde la interfaz aunque la API acepte varias, sin biblioteca, sin editar, sin duplicar, sin archivar, **sin ninguna forma de que el atleta registre nada** y por tanto sin cumplimiento visible para el entrenador. Ni un aviso al asignar un plan. Ninguna prueba propia.
+
+El ciclo del producto —planificar, ejecutar, registrar, revisar, ajustar— **se cortaba en el paso 2**.
+
+Tres defectos concretos encontrados al leer: `createNutritionPlan` insertaba el plan y sus comidas en consultas sueltas **sin transacción**, único sitio del proyecto con una escritura de varias tablas sin `withTransaction`; no notificaba al atleta; y el formulario seguía enviando una sola comida.
+
+### Decisión del usuario sobre los alimentos
+
+Se le plantearon tres caminos: texto libre, base de datos de alimentos completa, o biblioteca propia del entrenador calcando el patrón de `exercises`. **Eligió una combinación:** una biblioteca general que venga cargada por defecto, más una sección donde el entrenador cree sus propios alimentos o platos, seleccionables al armar el plan, **conservando además la posibilidad de escribir en texto libre** cuando lo prefiera.
+
+### Orden de las fases, cambiado a propósito
+
+La propuesta inicial ponía la paridad de gestión primero y la estructura semanal después. Con la decisión tomada se invirtió: construir «varias comidas» sobre el modelo plano y meter después los días obligaría a **tirar ese formulario**. El orden acordado queda:
+
+1. **Biblioteca de alimentos** (autocontenida, calca `exercises`, no se rehace nada).
+2. Modelo estructurado por días, constructor, editar, duplicar, archivar y la transacción.
+3. El atleta registra lo que come.
+4. Adherencia para el entrenador.
+
+Se advirtió que **la fase 3 es la que da el valor**: un plan más completo que nadie registra no cambia nada. Y que marcar una comida ocurre cuatro o cinco veces al día, frente a cuatro entrenamientos por semana, así que si cuesta más de un toque nadie lo usará.
+
+### Fase 1 terminada: biblioteca de alimentos
+
+**La nutrición pasa a ser su propio módulo.** Vivía dentro de `tracking`, junto a mediciones y check-ins, cuando era un solo formulario. Al crecer hasta el tamaño de las rutinas se separó en las cuatro capas como el resto: `src/routes/nutrition.routes.js`, `controllers`, `services` y `repositories`, montado en `/api/nutrition`. Los planes se movieron de `/api/tracking/nutrition` a `/api/nutrition/plans` y se actualizaron las tres pantallas que los pedían. Se hizo ahora y no en la fase 2 para no dejar la API a medio migrar.
+
+**Migración `006_biblioteca_alimentos.sql`**, aplicada en Neon y verificada: tipo `food_unit`, tabla `foods` y 46 alimentos generales.
+
+**Los macros se guardan por porción, y la porción la define el propio alimento** con `serving_size` + `serving_unit`. Casi todo va por 100 g, que es como vienen las etiquetas, pero hay cosas que nadie pesa —un huevo, una rebanada de pan, una cucharada de aceite— y obligarlas a 100 g haría la biblioteca incómoda justo en lo más cotidiano. Al usarlas en un plan bastará multiplicar por la cantidad.
+
+**Decisiones tomadas al implementar:**
+
+- **Todos los macros son opcionales y se guardan nulos, nunca cero.** Cero es un valor legítimo —el agua no tiene calorías— y confundirlo con «sin dato» falsearía el total del día en cuanto se sumen. La interfaz muestra una raya para lo que no se sabe.
+- **`CONSTRAINT foods_owner`**: un alimento privado sin dueño no lo vería nadie nunca, sería una fila muerta imposible de administrar. O es general, o tiene propietario.
+- **Un plato preparado no necesita modelo aparte**: es un alimento con unidad `porción` y sus macros agregados. La categoría «Plato preparado» está en el formulario.
+- **El buscador de los generales se resuelve en el navegador.** La biblioteca completa ya está descargada; pedirla otra vez por cada tecla sería peor para todos. Los propios no llevan buscador: quien tiene tres alimentos mira, no busca.
+- **`/foods/library` se declara antes de `/foods/:id`**, o Express tomaría «library» por un identificador. Es la misma precaución de `/compliance` en rutinas y `read-all` en notificaciones.
+
+**Pendiente explícito heredado a la fase 2:** `deleteFood` todavía no puede responder `'used'`, porque ningún plan referencia alimentos aún. Cuando exista la tabla de renglones del plan, esa función **tiene que comprobarla dentro de la transacción y negarse a borrar lo que ya esté en uso**, igual que `deleteExercise`. La transacción y la forma del resultado ya están puestas para eso, y `foodLibrary` devuelve `FALSE AS is_used` con el comentario que marca el sitio exacto.
+
+**También se corrigió en esta fase**, por estar en el camino: el aviso de check-in con nombres indefinidos, la falta de transacción al crear un plan, y la ausencia de aviso al asignarlo (`nutrition_assigned`, el noveno evento conectado).
+
+**Archivos.** Creados: `database/migrations/006_biblioteca_alimentos.sql`, los cuatro del módulo `nutrition`, `public/entrenador/alimentos.html`, `public/js/entrenador/alimentos.js`, `test/foods.test.js` y `test/foods-contract.test.js`. Modificados: `src/app.js`, las cuatro capas de `tracking`, `public/js/comun/navigation.js` e `icons.js`, `public/css/components.css`, las tres pantallas de nutrición y tres pruebas de contrato.
+
+**Verificaciones ejecutadas.**
+
+- **La suite pasó de 106 a 121 pruebas**, todas aprobadas.
+- `test/foods.test.js`, once comprobaciones contra la base: los generales están desde el primer día y el huevo conserva su unidad; el alimento propio aparece en el selector del dueño y **no en el de otro entrenador**; un macro vacío queda nulo y un cero explícito se guarda; **un entrenador ajeno no puede editarlo, desactivarlo ni borrarlo**; un alimento general no se modifica desde ninguna cuenta; desactivar lo retira del selector pero lo conserva en la biblioteca; el atleta puede leerla; y se borra mientras nada lo use.
+- `test/foods-contract.test.js`, sin base de datos. La más útil: **comprueba que las unidades coincidan en los tres sitios donde viven** —el tipo `food_unit` de PostgreSQL, el `z.enum` que valida y el desplegable del formulario—. Añadir una en uno solo produciría un error de tipo en vez de un mensaje legible.
+- **Comprobación temporal por HTTP con 20 controles, todos correctos**: la página y su módulo responden 200; sin sesión la biblioteca da 401; **`/foods/library` llega a su manejador y no lo captura `/foods/:id`**; una escritura sin token de CSRF se rechaza con 403; **una unidad inventada y una porción de cero se rechazan con 400**; alta, edición y cambio de estado funcionan; el desactivado deja de ofrecerse; **el atleta recibe 403 al crear y al abrir la administración**; el endpoint viejo de planes ya no existe y el nuevo responde. Los usuarios temporales se eliminaron y una auditoría confirmó `usuarios_temporales_restantes = 0`, 46 alimentos generales y ningún resto de prueba.
+- `format:check` conforme, `git diff --check` limpio, `node --check` sin errores y la aplicación se importa completa.
+
+**Dos errores propios, anotados para no repetirlos.**
+
+1. Se escribió un comentario con acentos graves **dentro de una plantilla de texto** de JavaScript: esos acentos cerraban la plantilla y el archivo dejó de compilar. Dentro de una consulta SQL en plantilla, los comentarios van con `--`.
+2. La limpieza de la comprobación por HTTP comparaba `sess -> 'user' ->> 'id'`, que es texto, con `ANY($1::uuid[])`. PostgreSQL respondió `operator does not exist: text = uuid` y **los usuarios temporales quedaron sin borrar** hasta corregirlo. El repositorio ya lo hacía bien con un parámetro de texto; la comprobación no lo copió.
+
+**Pendiente de esta fase.** Confirmación visual del usuario: entrar como entrenador, abrir **Alimentos** en el menú, revisar los generales y su buscador, crear un alimento propio con y sin macros, editarlo, desactivarlo, comprobar que desaparece del selector, reactivarlo y borrarlo. Y publicar en Render, **aplicando allí la migración 006**, que ya está en Neon.
+
+### Fase 2 terminada: planes semanales, constructor, editar, duplicar y archivar
+
+Un plan pasa de ser una lista plana de comidas a tener la misma forma que una rutina, con un nivel más porque un día tiene comidas y una comida tiene alimentos:
+
+    plan → día (1..7) → comida → renglón
+
+**Migración `007_nutricion_semanal.sql`**, aplicada en Neon. Antes de escribirla se comprobó qué datos había: **cero planes y cero comidas**, así que la reestructuración no ponía nada en riesgo. Aun así se escribió compatible hacia atrás —las comidas existentes habrían pasado al Día 1 de su plan— para que no dependa de que la base esté vacía.
+
+Añade `weeks`, `start_date`, `end_date` y `origin_plan_id` a `nutrition_plans`; crea `nutrition_days` con `day_type` y `mirrors_day_order`; **repunta `nutrition_meals` del plan al día**; y crea `nutrition_items`.
+
+**Decisiones tomadas al implementar:**
+
+- **Solo dos tipos de día: `planned` y `free`.** Las rutinas distinguen descanso de descanso opcional porque el atleta puede decidir entrenar igual; en alimentación esa distinción no significa nada.
+- **Un renglón es un alimento con cantidad o un texto libre, nunca las dos cosas ni ninguna.** Lo exige una restricción de la tabla y lo rechaza antes la validación, con un mensaje que se puede mostrar. El texto libre no es un parche: obligar a catalogar «lo que sobró de anoche» para poder escribirlo haría que el entrenador dejara de usar la pantalla.
+- **La cantidad va en la unidad del propio alimento** —«150 g», «3 unidades»— y el factor para escalar los macros es `quantity / serving_size`. Es como piensa quien arma el plan.
+- **Los macros no se copian al renglón.** Si el entrenador corrige una errata en un alimento, todos los planes que lo usan se corrigen con él; congelarlos obligaría a rehacer cada plan a mano.
+- **Modificar archiva y crea una versión nueva**, heredando `origin_plan_id`, igual que las rutinas. Sin ese enlace, lo que el atleta registre en la fase 3 se perdería de vista cada vez que el entrenador ajusta el menú.
+- **`currentDay` lo calcula el servidor**, no el navegador. A diferencia de las rutinas, donde el atleta elige qué día va a entrenar, aquí abrir la pantalla y ver la comida de hoy es el uso normal, y un teléfono en otra zona horaria mostraría el menú equivocado.
+- **La suma avisa cuando está incompleta.** Si un renglón es texto libre o su alimento no tiene un macro, el total es un mínimo y se dice. Mostrar «2.400 kcal» con la misma seguridad tanto si están contados todos los renglones como si la mitad no, es mentir.
+
+**El pendiente que dejó la fase 1 queda cerrado:** `deleteFood` ya comprueba `nutrition_items` dentro de la transacción y se niega a borrar un alimento que forme parte de algún plan, incluso archivado. `foodLibrary` calcula `is_used` de verdad y la pantalla oculta el botón de borrar.
+
+**Interfaz.** Se creó el constructor semanal `nutricion-formulario.html` con la misma tira de siete días que el de rutinas, tipo de día, día espejo, duración del plan, objetivos diarios y, dentro de cada día, comidas con sus renglones. Los totales del día y de cada comida se recalculan al escribir **sin volver a dibujar la fila**, para no perder el foco mientras se teclea una cantidad. La lista del entrenador se rehízo con Ver, Modificar, Duplicar y Archivar/Restaurar. La pantalla del atleta abre en el día de hoy y deja el resto de la semana a un toque.
+
+**Se extrajo `public/js/comun/plan-detalle.js`** en cuanto fue el segundo sitio que dibujaba la semana. Lo usan la lista del entrenador, la pantalla del atleta y la ficha individual; tres copias de ochenta líneas se separan solas, como ya habría pasado con el mapa de cumplimiento de las rutinas si no se hubiera compartido. Los otros dos módulos puros nuevos son `nutricion-macros.js` (aritmética y presentación) y `plan-copia.js` (duplicación), ambos sin DOM y por tanto comprobables sin tocar PostgreSQL.
+
+**Archivos.** Creados: la migración, `nutricion-formulario.html` y su módulo, `plan-detalle.js`, `nutricion-macros.js`, `plan-copia.js` y cuatro archivos de prueba. Modificados: las cuatro capas del módulo `nutrition`, `public/entrenador/nutricion.html` y su módulo, `public/atleta/nutricion.html` y el suyo, `atleta-detalle.js`, `components.css` y `data-isolation.test.js`.
+
+**Verificaciones ejecutadas.**
+
+- **La suite pasó de 121 a 161 pruebas**, todas aprobadas.
+- `nutrition-macros.test.js`, trece pruebas puras: el escalado por porción, que un macro sin dato queda nulo y no en cero, que la suma avisa de lo que le falta, la pluralización de las unidades y que la copia conserva el plan entero en sus franjas.
+- `nutrition-validation.test.js`, nueve pruebas puras contra el esquema.
+- `nutrition-contract.test.js`, seis de contrato. La más útil comprueba que **los tipos de día coincidan en los cuatro sitios donde viven** —el enum de PostgreSQL, la validación, el constructor y el dibujado—, y otra que **la pantalla del atleta no calcule la fecha por su cuenta**.
+- `weekly-nutrition.test.js`, doce contra la base: los tres niveles anidados, el día espejo copiando en filas propias, el linaje al modificar, archivar y restaurar, y que un alimento en uso ya no se pueda borrar.
+- **Comprobación temporal por HTTP con 30 controles, todos correctos**, incluidos que `/plans/:id/status` llegue a su manejador y no lo capture `/plans/:id`, que el atleta reciba 403 al crear o archivar, y que le llegue el aviso del plan nuevo. Usuarios y planes temporales eliminados, con auditoría posterior sin restos.
+- `format:check` conforme, `git diff --check` limpio, todos los imports del navegador resuelven y los tokens de CSS usados existen en `base.css`.
+
+**Tres errores propios, anotados para no repetirlos.**
+
+1. **Un literal de enum dentro de un `SELECT` no se convierte solo.** `INSERT ... SELECT 'planned'` falló con `column "day_type" is of type nutrition_day_type but expression is of type text`; hay que escribir `'planned'::nutrition_day_type`. En un `INSERT ... VALUES` sí se ajusta, y esa diferencia es la que despista. La migración va en transacción, así que no se aplicó nada a medias.
+2. **Las reglas de la semana viven en la validación de la ruta, no en el servicio.** La primera versión de las pruebas las comprobaba llamando al servicio, que **no pasa por Zod**, así que un plan inválido llegaba hasta PostgreSQL y fallaba por una restricción de la tabla en vez de por la regla que se quería comprobar. Se movieron a un archivo puro contra el esquema, que se exporta para eso. De paso se descubrió que el repositorio dependía de que Zod hubiera aplicado el valor por defecto de `status`: ahora también lo pone él.
+3. **El servidor de la fase anterior seguía ocupando el puerto 3000**, así que la comprobación por HTTP respondía con el código viejo: pedía `meals` en la raíz del plan y `/plans/:id/status` daba 404. Se perdió un rato buscando el fallo en el esquema, que era correcto. Antes de dar por buena una comprobación contra un servidor local, hay que asegurarse de que el que responde es el que se acaba de arrancar.
+
+**Pendiente de esta fase.** Confirmación visual del usuario y publicar en Render **aplicando allí la migración 007**, que ya está en Neon. La fase 3 —que el atleta marque lo que come— es la que cierra el ciclo y da el valor de todo este bloque.
