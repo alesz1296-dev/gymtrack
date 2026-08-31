@@ -2398,3 +2398,52 @@ El resumen y la cuadrícula devuelven cuántas comidas se cambiaron o se saltaro
 Las cuatro fases están terminadas. Nutrición pasó de ser un formulario plano con una sola comida —el MVP del 7 de agosto, intacto durante tres semanas— a tener biblioteca de alimentos, planes semanales con días y comidas, registro del atleta y adherencia visible para el entrenador. **Las pruebas pasaron de 106 a 182.**
 
 Lo que queda pendiente del proyecto sigue siendo lo anotado el 31 de agosto: fotografías de progreso, integración continua, la separación de entornos, `verify-full`, la entregabilidad del correo y los cabos de higiene.
+
+### Integración continua
+
+Era el pendiente con mejor relación esfuerzo/valor de toda la lista: había 182 pruebas y **nada las ejecutaba salvo que alguien se acordara**. Una suite así se degrada sola.
+
+#### El obstáculo real: las pruebas escriben en producción
+
+No se podía apuntar la integración continua a Neon. Las pruebas crean y borran usuarios, planes y rutinas; hacerlo en cada empuje contra la base que sirve el sitio publicado —y con ejecuciones que pueden solaparse— sería justo el riesgo que este trabajo viene a reducir.
+
+La solución es que la construcción tenga **su propia base efímera**: un contenedor de PostgreSQL que nace vacío con el trabajo y muere con él. Eso trae un beneficio que no se buscaba: cada ejecución comprueba que **las migraciones se apliquen enteras desde cero**, algo que la base de producción nunca vuelve a demostrar porque solo recibe la última.
+
+#### Validado antes de escribirlo
+
+Para no descubrir en el primer empuje si funciona, se comprobó a mano lo mismo que hará la construcción:
+
+1. **La cadena completa de migraciones sobre un esquema vacío.** Las ocho se aplicaron sin error: 26 tablas, 46 alimentos generales y 10 ejercicios generales. **Nadie lo había comprobado nunca**, porque Neon las ha recibido de una en una desde el 10 de agosto.
+2. **La suite entera contra ese esquema recién creado.** Las 182 pruebas pasaron, lo que además demuestra que no dependen de ningún dato preexistente.
+
+El esquema se selecciona con `search_path` dentro de la propia cadena de conexión, así que ningún módulo de `src` necesita enterarse. Se descubrió de paso que **el pooler de Neon rechaza el parámetro `options`** con un error de protocolo (`08P01`) y que hay que usar el punto de conexión directo, sin el sufijo `-pooler`.
+
+También se confirmó que **`dotenv` no pisa las variables ya definidas**, de modo que basta con exportar `DATABASE_URL` para desviar las pruebas sin tocar `.env` —un archivo que además el usuario suele tener abierto en el editor, con el problema que eso dio el 14 de agosto—.
+
+#### Lo que quedó
+
+**`.github/workflows/ci.yml`.** Se ejecuta en cada empuje a `main` y en cada pull request, con un grupo de concurrencia que cancela la ejecución anterior si llegan dos empujes seguidos. Cinco pasos: instalar con `npm ci` —que falla si el archivo de bloqueo se desincronizó de `package.json`—, comprobar el estilo, aplicar las migraciones desde cero, **comprobar que la aplicación se importa entera** (las pruebas no importan `app.js`, así que un archivo de rutas roto pasaría inadvertido hasta el despliegue) y ejecutar la suite.
+
+**`npm run test:aislado`**, el equivalente local. Crea un esquema temporal, migra dentro de él, ejecuta la suite y lo destruye pase lo que pase. Es la forma recomendada de ejecutar las pruebas a partir de ahora: **no pueden alcanzar ninguna tabla real porque no las ven**. `npm test` a secas sigue existiendo y sigue escribiendo sobre las tablas reales.
+
+El `README` documenta las dos formas y la diferencia, y lleva la insignia del estado de la construcción.
+
+#### Dos errores propios
+
+**1. El nombre del archivo hacía que la suite se ejecutara a sí misma.** El ejecutor aislado se llamó primero `database/test-aislado.js`, y `node --test` da por prueba todo lo que encaje en `test-*.js`, `*.test.js`, `*_test.js` o cuelgue de una carpeta `test/`. Así que `npm test` lo recogía y lo ejecutaba de forma anidada. Se notó porque **la suite pasó de 182 pruebas a 183**. Renombrado a `database/pruebas-aisladas.js`, y el motivo queda escrito en la cabecera del propio archivo.
+
+**2. Un `search_path` quedó pegado en el pooler de producción.** El primer script de sondeo hizo `SET search_path TO <esquema>` sobre una conexión del pool y la devolvió **sin restaurarla**. El pooler de Neon la conservó viva con ese ajuste, y al borrar el esquema esa conexión empezó a responder `relation "users" does not exist` a cualquiera que cayera en ella.
+
+Se detectó al ejecutar una auditoría rutinaria que falló sin motivo aparente. Lo primero fue comprobar el daño: **las 27 tablas seguían intactas en `public`**, no se destruyó nada. Se corrigió tomando diez conexiones a la vez y ejecutando `SET search_path TO "$user", public` en cada una —solo una estaba envenenada— y se verificó con 60 consultas concurrentes contra las tablas reales, todas correctas y con el mismo resultado.
+
+**La lección:** una conexión que se toma del pool con `pool.connect()` y se modifica con `SET` hay que devolverla como estaba, porque detrás hay un pooler que la reutiliza. Y, sobre todo, **es el segundo incidente en dos días causado por que un script de diagnóstico alcanza la base de producción**. El primero fue la migración destructiva del 007. Refuerza el punto 3 de los pendientes: separar los entornos ya no es higiene, es lo que está fallando.
+
+#### Verificaciones
+
+- Las migraciones desde cero: las ocho, sin error, sobre un esquema vacío.
+- La suite completa contra ese esquema: **182 pruebas, todas aprobadas**.
+- `npm run test:aislado` de extremo a extremo, con el esquema destruido al terminar y ninguno restante.
+- El flujo de trabajo, comprobado punto por punto: que dispare en empuje y pull request, que declare el servicio de PostgreSQL con su comprobación de salud, que **la configuración apunte a `localhost` y no a Neon**, que no lleve tabuladores —que YAML prohíbe— y que el comando `test:aislado` apunte a un archivo que existe.
+- Estado de la base tras el incidente: 27 tablas, 4 usuarios reales, 2 planes, ningún esquema temporal y ningún usuario de prueba.
+
+**Pendiente.** La primera ejecución real de la construcción, que ocurrirá con este mismo empuje. La insignia del `README` dirá si pasó.

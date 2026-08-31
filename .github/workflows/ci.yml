@@ -1,0 +1,86 @@
+# Integración continua.
+#
+# Hasta ahora las pruebas solo se ejecutaban cuando alguien se acordaba, y una
+# suite así se degrada sola. Esto las ejecuta en cada empuje y en cada pull
+# request, de modo que una regresión rompe la construcción en lugar de llegar
+# a producción.
+#
+# La base de datos es un contenedor que nace vacío y muere con el trabajo. No
+# se apunta a Neon a propósito: las pruebas crean y borran usuarios, y hacerlo
+# contra la base que sirve el sitio publicado sería justo el riesgo que este
+# archivo viene a reducir. Como efecto secundario, cada ejecución comprueba
+# que **las migraciones se apliquen enteras desde cero**, algo que la base de
+# producción nunca vuelve a demostrar porque solo recibe la última.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Una ejecución por rama: si llegan dos empujes seguidos, la anterior se
+# cancela en lugar de gastar minutos en un código que ya está superado.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruebas:
+    name: Pruebas y estilo
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: gymtrack
+          POSTGRES_PASSWORD: gymtrack
+          POSTGRES_DB: gymtrack_ci
+        ports:
+          - 5432:5432
+        # Sin esto los pasos podrían empezar antes de que PostgreSQL acepte
+        # conexiones, y las migraciones fallarían por una carrera y no por un
+        # error real.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Estas credenciales son del contenedor efímero y no abren nada: nacen y
+      # mueren con la ejecución. Los secretos de verdad no viven aquí.
+      DATABASE_URL: postgres://gymtrack:gymtrack@localhost:5432/gymtrack_ci
+      SESSION_SECRET: secreto-de-integracion-continua-sin-valor-real
+      # `DATABASE_SSL` se queda sin definir: el contenedor no habla TLS.
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # El proyecto declara `engines: node >= 20`; se fija una versión
+          # concreta para que la construcción no cambie sola de un día a otro.
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependencias
+        # `npm ci` respeta el archivo de bloqueo y falla si se ha desincronizado
+        # de `package.json`, que es lo que se quiere en una construcción.
+        run: npm ci
+
+      - name: Comprobar el estilo
+        run: npm run format:check
+
+      - name: Aplicar las migraciones desde cero
+        run: npm run db:migrate
+
+      - name: Comprobar que la aplicación se importa entera
+        # Las pruebas no importan `app.js`, así que un archivo de rutas roto
+        # pasaría inadvertido hasta el despliegue.
+        run: node -e "import('./src/app.js').then(() => console.log('la aplicación se importa correctamente'))"
+
+      - name: Ejecutar las pruebas
+        run: npm test

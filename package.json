@@ -12,7 +12,8 @@
     "db:seed": "node database/seed.js",
     "test": "node --test",
     "format": "prettier --write \"{src,public/js,database,test}/**/*.js\"",
-    "format:check": "prettier --check \"{src,public/js,database,test}/**/*.js\""
+    "format:check": "prettier --check \"{src,public/js,database,test}/**/*.js\"",
+    "test:aislado": "node database/pruebas-aisladas.js"
   },
   "engines": {
     "node": ">=20"

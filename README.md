@@ -1,5 +1,7 @@
 # GymTrack
 
+[![CI](https://github.com/mespinoza86/gymtrack/actions/workflows/ci.yml/badge.svg)](https://github.com/mespinoza86/gymtrack/actions/workflows/ci.yml)
+
 Aplicación web modular para que entrenadores asignen rutinas y planes nutricionales, y para que atletas registren entrenamientos, mediciones, check-ins y mensajes.
 
 ## Requisitos
@@ -144,6 +146,32 @@ Mientras no exista un panel de administración, esta es la salida manual. Con ac
 ```sql
 UPDATE users SET email_verified_at = NOW() WHERE email = 'persona@ejemplo.com';
 ```
+
+## Pruebas
+
+El proyecto tiene una suite de pruebas automatizadas y dos formas de ejecutarla.
+
+```
+npm.cmd run test:aislado    # recomendado
+npm.cmd test
+```
+
+**`test:aislado` es el que conviene usar.** Crea un esquema temporal en la base
+configurada, aplica todas las migraciones desde cero dentro de él, ejecuta la
+suite y lo destruye al terminar. Las pruebas no pueden alcanzar ninguna tabla
+real porque no las ven.
+
+**`npm test` a secas escribe sobre las tablas reales.** Crea usuarios, rutinas y
+planes de prueba y los borra al acabar, comprobando el recuento. Funciona, pero
+depende de esa disciplina: si escribes una prueba nueva, tiene que limpiar lo
+suyo y verificar cuántas filas borró.
+
+### En cada empuje
+
+`.github/workflows/ci.yml` ejecuta el estilo, las migraciones desde cero y la
+suite completa en GitHub, contra un PostgreSQL efímero que nace y muere con la
+ejecución. Una regresión rompe la construcción en lugar de llegar al sitio
+publicado.
 
 ## Seguridad antes de producción
 
