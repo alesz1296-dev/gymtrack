@@ -62,3 +62,7 @@ export async function logMeal(req, res) {
 export async function unlogMeal(req, res) {
   res.json(await service.unlogMeal(req.session.user.id, req.params.id, req.params.mealId));
 }
+
+export async function compliance(req, res) {
+  res.json(await service.trainerCompliance(req.session.user.id));
+}

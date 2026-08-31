@@ -199,3 +199,59 @@ export async function planProgress(id, user) {
 
   return { plan, progress };
 }
+
+/* Resumen para el entrenador: cómo va esta semana cada uno de sus atletas.
+
+   La semana en curso se calcula aquí con `currentWeek`, la misma función que
+   usa el resto del módulo, en lugar de repetir la regla dentro del SQL.
+   Duplicar una regla de negocio en dos sitios es pedir que se separen. */
+export async function trainerCompliance(trainerId) {
+  const rows = await repository.trainerAthletePlans(trainerId);
+
+  const conPlan = rows.filter((row) => row.plan_id);
+  const semanas = conPlan.map((row) =>
+    currentWeek({ start_date: row.start_date, weeks: row.weeks }),
+  );
+
+  const cumplidos = await repository.completedPlanDays(
+    conPlan.map((row) => row.origin_id),
+    semanas,
+  );
+  const porClave = new Map(cumplidos.map((row) => [`${row.origin}-${row.week}`, row]));
+
+  const athletes = rows
+    .map((row) => {
+      if (!row.plan_id) {
+        return {
+          athleteId: row.athlete_id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          plan: null,
+        };
+      }
+
+      const week = currentWeek({ start_date: row.start_date, weeks: row.weeks });
+      const resumen = porClave.get(`${row.origin_id}-${week}`);
+
+      return {
+        athleteId: row.athlete_id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        plan: {
+          id: row.plan_id,
+          name: row.plan_name,
+          weeks: row.weeks,
+          currentWeek: week,
+          plannedDays: row.planned_days,
+          completedDays: resumen?.completed ?? 0,
+          /* Comidas cambiadas o saltadas dentro de los días cumplidos. Un
+             cumplimiento alto con muchas sustituciones es una conversación
+             distinta a uno seguido al pie de la letra. */
+          offPlanMeals: resumen?.off_plan ?? 0,
+        },
+      };
+    })
+    .sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
+
+  return { athletes };
+}

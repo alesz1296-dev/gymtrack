@@ -10,6 +10,7 @@ import { api, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
 import { icon } from '../comun/icons.js';
 import { renderPlanWeek, renderGoals, durationLabel } from '../comun/plan-detalle.js';
+import { renderNutritionCompliance } from '../comun/cumplimiento.js';
 
 await initNavigation();
 
@@ -61,7 +62,7 @@ function renderPlanCard(plan) {
 
 /* ---------- Detalle desplegable ---------- */
 
-function renderPlanDetail(plan) {
+function renderPlanDetail(plan, progress) {
   return `
     <article class="card">
       <header class="page-header">
@@ -82,6 +83,7 @@ function renderPlanDetail(plan) {
         </div>
       </header>
       ${renderGoals(plan)}
+      ${renderNutritionCompliance(plan, progress)}
       <h3 class="mt">La semana</h3>
       ${renderPlanWeek(plan)}
     </article>`;
@@ -89,8 +91,10 @@ function renderPlanDetail(plan) {
 
 async function openPlan(id) {
   try {
-    const { plan } = await api(`/api/nutrition/plans/${id}`);
-    detail.innerHTML = renderPlanDetail(plan);
+    /* El endpoint de progreso ya devuelve el plan completo además de la
+       cuadrícula, así que basta una petición para pintar todo el bloque. */
+    const { plan, progress } = await api(`/api/nutrition/plans/${id}/progress`);
+    detail.innerHTML = renderPlanDetail(plan, progress);
     detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     showMessage(message, error.message, 'error');

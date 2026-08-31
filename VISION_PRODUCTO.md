@@ -2346,3 +2346,55 @@ Es la fase que cierra el ciclo. Hasta ahora el plan se construía cada vez mejor
 **Pendiente de esta fase.** Confirmación visual del usuario y despliegue. **La migración 008 es puramente aditiva**, así que no rompe el código publicado como sí hizo la 007: el sitio actual sigue funcionando aunque el despliegue tarde.
 
 **Lo siguiente es la fase 4**, que ya tiene casi todo hecho: el endpoint `/plans/:id/progress` existe y devuelve la cuadrícula, y `renderCompliance` del módulo compartido de rutinas la sabe dibujar. Falta llevarla a la pantalla del entrenador y a la ficha del atleta.
+
+### Fase 4 terminada: el entrenador ve la adherencia
+
+Con esto queda **completo el bloque de nutrición** acordado el 31 de agosto, y el ciclo del producto —planificar, ejecutar, registrar, revisar, ajustar— se cierra también en alimentación, como ya lo hacía en entrenamiento.
+
+**Sin migración.** La fase 3 dejó las tablas y el endpoint `/plans/:id/progress`; esta fase es de consulta e interfaz.
+
+#### La cuadrícula se generalizó en vez de duplicarse
+
+`public/js/comun/cumplimiento.js` estaba atado al vocabulario de las rutinas: `day_type === 'training'`, `day.exercises.length`, «días de entrenamiento». La mecánica —celdas, estados, leyenda, cabeceras de semana y día— es **idéntica** para un plan de alimentación; lo único que cambia son las palabras.
+
+Se extrajo un `renderGrid` interno que recibe la configuración del dominio, y el módulo expone dos envoltorios: `renderRoutineCompliance` y `renderNutritionCompliance`. Cada uno aporta qué día cuenta como trabajo, cuántas unidades tiene, cómo se llaman y qué decir cuando el plan no está asignado. Las tres llamadas existentes de rutinas se actualizaron.
+
+**Hay una prueba que comprueba que la tabla se dibuja en un solo sitio** y que ninguna pantalla la reescribe por su cuenta. Sin ella, la tentación de copiar sesenta líneas para «solo cambiar dos palabras» acabaría ganando.
+
+#### Endpoint nuevo `GET /api/nutrition/plans/compliance`
+
+Solo para entrenadores. Devuelve, por cada atleta vinculado, su plan activo y cómo va en la semana en curso. Calca `/api/routines/compliance` y por los mismos motivos:
+
+- `DISTINCT ON` se queda con el plan activo más reciente cuando un atleta tiene varios, y un `LEFT JOIN` hace que **los atletas sin plan aparezcan igual**, con su aviso, en lugar de desaparecer.
+- La semana en curso se calcula en el servicio con `currentWeek`, no dentro del SQL. Duplicar una regla de negocio en dos sitios es pedir que se separen.
+- El recuento se resuelve **en una sola consulta para todos los atletas**, pasando dos listas en paralelo con `unnest`, en lugar de lanzar una por atleta.
+- **Se declara antes de `/plans/:id`**, o Express tomaría «compliance» por un identificador. Hay una prueba que lo fija.
+
+**Solo cuentan los días con plan.** Incluir los días libres inflaría la cifra con jornadas en las que no había nada que seguir, y alguien que solo marcase descansos aparecería como cumplidor. Es la misma decisión que se tomó con los días libres de las rutinas.
+
+#### `offPlanMeals`: la cifra que evita una lectura falsa
+
+El resumen y la cuadrícula devuelven cuántas comidas se cambiaron o se saltaron. **Un cumplimiento del 100% a base de sustituciones no es lo mismo que uno seguido al pie de la letra**, y sin ese dato los dos se ven idénticos en la pantalla. Aparece en la celda del mapa («cumplido, 2 fuera de plan») y junto al recuento de la lista de atletas.
+
+#### Interfaz
+
+- **Lista de atletas:** la columna «Esta semana» se desdobló en **Rutina** y **Nutrición**. El color es verde solo al completar la semana y ámbar si no ha empezado; el estado intermedio se deja neutro a propósito, para no regañar a nadie por ir a mitad de semana.
+- **Detalle del plan:** al pulsar «Ver plan» aparece la cuadrícula sobre la semana. La pantalla pasó a pedir `/plans/:id/progress`, que ya devuelve el plan completo además del mapa, en lugar de dos peticiones.
+- **Ficha individual:** el bloque de nutrición pasa de ser una lista de planes a mostrar el plan activo con su mapa de adherencia, igual que la rutina justo encima. Y el resumen superior tiene ahora cuatro indicadores en vez de tres: **rutina y nutrición de esta semana**, peso y check-ins pendientes. Mirar solo una de las dos mitades da una idea equivocada de cómo va la persona. Las dos cuadrículas se piden con `Promise.all` para no encadenar dos esperas.
+
+**Archivos.** Modificados: `cumplimiento.js` (generalizado), las cuatro capas del módulo `nutrition`, `public/js/entrenador/atletas.js` (reescrita), `atleta-detalle.js`, `nutricion.js`, `rutinas.js`, `public/entrenador/atletas.html` y dos pruebas de contrato.
+
+**Verificaciones ejecutadas.**
+
+- **La suite pasó de 179 a 182 pruebas**, todas aprobadas.
+- Tres de contrato nuevas: que **la cuadrícula se dibuje en un solo sitio** y ninguna pantalla la repita, que `/plans/compliance` se declare antes de `/plans/:id`, y que **el `colspan` de la fila vacía coincida con las columnas** de la tabla de atletas, que ahora son seis.
+- **Comprobación temporal por HTTP con 14 controles, todos correctos**: que el resumen llegue a su manejador, que **un atleta sin plan aparezca igual**, que cuente los días cumplidos y las comidas fuera de plan, que un entrenador ajeno no vea nada, que el atleta reciba 403, y que **lo registrado en la semana 1 no cuente en la 2**. Cuatro usuarios temporales eliminados con auditoría posterior sin restos.
+- `format:check` conforme, `git diff --check` limpio y todos los imports del navegador resuelven.
+
+**Pendiente de esta fase.** Confirmación visual del usuario y despliegue. **No hay migración**, así que subir el código es todo lo que hace falta.
+
+### Estado del bloque de nutrición al cerrarlo
+
+Las cuatro fases están terminadas. Nutrición pasó de ser un formulario plano con una sola comida —el MVP del 7 de agosto, intacto durante tres semanas— a tener biblioteca de alimentos, planes semanales con días y comidas, registro del atleta y adherencia visible para el entrenador. **Las pruebas pasaron de 106 a 182.**
+
+Lo que queda pendiente del proyecto sigue siendo lo anotado el 31 de agosto: fotografías de progreso, integración continua, la separación de entornos, `verify-full`, la entregabilidad del correo y los cabos de higiene.

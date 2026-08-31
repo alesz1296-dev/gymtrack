@@ -5,7 +5,7 @@
 import { initNavigation } from '../comun/navigation.js';
 import { api, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
-import { renderCompliance } from '../comun/cumplimiento.js';
+import { renderRoutineCompliance } from '../comun/cumplimiento.js';
 import { icon } from '../comun/icons.js';
 
 await initNavigation();
@@ -121,7 +121,7 @@ function renderRoutineDetail(routine, progress) {
           </a>
         </div>
       </header>
-      ${renderCompliance(routine, progress)}
+      ${renderRoutineCompliance(routine, progress)}
       <h3 class="mt">La semana</h3>
       ${routine.days.map(renderDay).join('')}
     </article>`;

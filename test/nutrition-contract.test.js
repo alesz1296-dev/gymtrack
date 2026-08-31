@@ -173,3 +173,59 @@ test('las rutas de registro se declaran fuera de la rama de planes', async () =>
   assert.match(rutas, /router\.delete\(\s*'\/logs\/:id\/meals\/:mealId'/);
   assert.match(rutas, /router\.get\('\/plans\/:id\/progress'/);
 });
+
+test('la cuadrícula se comparte entre rutinas y nutrición sin duplicarse', async () => {
+  const [modulo, rutinas, ficha, planes] = await Promise.all([
+    read('../public/js/comun/cumplimiento.js'),
+    read('../public/js/entrenador/rutinas.js'),
+    read('../public/js/entrenador/atleta-detalle.js'),
+    read('../public/js/entrenador/nutricion.js'),
+  ]);
+
+  /* La mecánica de la cuadrícula vive una sola vez; cada dominio solo aporta
+     su vocabulario. Si alguien copiara la tabla en otro sitio, esto lo caza. */
+  assert.equal(modulo.match(/class="heatmap"/g).length, 1, 'la tabla se dibuja en un solo sitio');
+  assert.match(modulo, /export function renderRoutineCompliance/);
+  assert.match(modulo, /export function renderNutritionCompliance/);
+
+  for (const source of [rutinas, ficha])
+    assert.match(source, /renderRoutineCompliance\(/, 'las rutinas usan su envoltorio');
+  for (const source of [planes, ficha])
+    assert.match(source, /renderNutritionCompliance\(/, 'la nutrición usa el suyo');
+
+  /* Y ninguna pantalla vuelve a escribir la cuadrícula por su cuenta. */
+  for (const source of [rutinas, ficha, planes])
+    assert.ok(!source.includes('heatmap'), 'la tabla no se repite fuera del módulo');
+});
+
+test('/plans/compliance se declara antes de /plans/:id', async () => {
+  const rutas = await read('../src/routes/nutrition.routes.js');
+
+  /* "compliance" no es un identificador. Si `/plans/:id` fuera antes, Express
+     se lo tragaría y la lista de atletas recibiría un 404 en vez del resumen.
+     Es la misma precaución que en `/routines/compliance`. */
+  assert.ok(
+    rutas.indexOf("'/plans/compliance'") < rutas.indexOf("'/plans/:id'"),
+    '/plans/compliance debe declararse antes que /plans/:id',
+  );
+});
+
+test('la lista de atletas muestra las dos adherencias', async () => {
+  const [pagina, modulo] = await Promise.all([
+    read('../public/entrenador/atletas.html'),
+    read('../public/js/entrenador/atletas.js'),
+  ]);
+
+  assert.match(pagina, /<th>Rutina<\/th>/);
+  assert.match(pagina, /<th>Nutrición<\/th>/);
+
+  /* El colspan de la fila vacía tiene que coincidir con el número de
+     columnas, o la tabla se descuadra justo cuando no hay atletas. */
+  const columnas = (pagina.match(/<th>/g) ?? []).length;
+  const declarado = Number(modulo.match(/const COLUMNAS = (\d+)/)[1]);
+  assert.equal(declarado, columnas, 'COLUMNAS debe coincidir con las cabeceras');
+
+  /* Y cada fila tiene tantas celdas como cabeceras. */
+  const celdas = (modulo.match(/<td>/g) ?? []).length;
+  assert.equal(celdas, columnas, 'cada fila debe tener una celda por cabecera');
+});

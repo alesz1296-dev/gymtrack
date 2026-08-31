@@ -15,7 +15,7 @@ import { initNavigation } from '../comun/navigation.js';
 import { api, formData, showMessage } from '../comun/api.js';
 import { escapeHtml } from '../comun/dom.js';
 import { icon } from '../comun/icons.js';
-import { renderCompliance } from '../comun/cumplimiento.js';
+import { renderRoutineCompliance, renderNutritionCompliance } from '../comun/cumplimiento.js';
 import { renderMeasurementCharts, measurementSummary, METRICS } from '../comun/mediciones.js';
 import { durationLabel } from '../comun/plan-detalle.js';
 
@@ -39,10 +39,17 @@ function statCard(label, value, iconName) {
     </article>`;
 }
 
-function renderSummary(compliance, measurements, checkins) {
+function renderSummary(compliance, nutricion, measurements, checkins) {
   const semana = compliance?.routine
     ? `${compliance.routine.completedDays} de ${compliance.routine.trainingDays} días`
     : 'Sin rutina';
+
+  /* La adherencia al plan de alimentación pasa a estar arriba, junto al
+     entrenamiento: son las dos mitades de lo que se acordó con la persona y
+     mirar solo una da una idea equivocada de cómo va. */
+  const comida = nutricion?.plan
+    ? `${nutricion.plan.completedDays} de ${nutricion.plan.plannedDays} días`
+    : 'Sin plan';
 
   const peso =
     measurements.length && measurements[0].weight_kg ? `${measurements[0].weight_kg} kg` : '—';
@@ -50,7 +57,8 @@ function renderSummary(compliance, measurements, checkins) {
   const pendientes = checkins.filter((item) => !item.reviewed_at).length;
 
   document.querySelector('#summary').innerHTML =
-    statCard('Esta semana', semana, 'rutinas') +
+    statCard('Rutina esta semana', semana, 'rutinas') +
+    statCard('Nutrición esta semana', comida, 'nutricion') +
     statCard('Último peso', peso, 'progreso') +
     statCard('Check-ins sin responder', pendientes, 'checkins');
 }
@@ -82,7 +90,7 @@ async function renderRoutine(routine) {
       </div>
       <a class="btn secondary small" href="rutina-formulario.html?id=${full.id}">Modificar</a>
     </div>
-    ${renderCompliance(full, progress)}`;
+    ${renderRoutineCompliance(full, progress)}`;
 }
 
 /* ---------- Progreso ---------- */
@@ -151,36 +159,49 @@ function renderCheckins(checkins) {
 
 /* ---------- Nutrición ---------- */
 
-/* Un resumen, no el plan entero: la semana completa vive en la pantalla de
-   nutrición y duplicarla aquí crearía dos sitios que mantener. */
-function nutritionItem(plan) {
+/* El plan activo con su mapa de adherencia, igual que la rutina justo encima.
+   El desglose de comidas no se repite aquí: vive en la pantalla de nutrición
+   y duplicarlo crearía dos sitios que mantener. Lo que sí hace falta en la
+   ficha es ver de un vistazo en qué semana dejó de registrar. */
+async function renderNutrition(plans) {
+  const container = document.querySelector('#nutrition');
+  const activo = plans[0];
+
+  if (!activo) {
+    container.innerHTML = `
+      <div class="empty">
+        Este atleta todavía no tiene un plan de alimentación.
+        <div class="actions mt">
+          <a class="btn small" href="nutricion-formulario.html">Crear un plan</a>
+        </div>
+      </div>`;
+    return;
+  }
+
   const macros = [
-    plan.calories ? `${plan.calories} kcal` : '',
-    plan.protein_g ? `${plan.protein_g} g proteína` : '',
-    plan.carbs_g ? `${plan.carbs_g} g carbohidratos` : '',
-    plan.fats_g ? `${plan.fats_g} g grasas` : '',
+    activo.calories ? `${activo.calories} kcal` : '',
+    activo.protein_g ? `${activo.protein_g} g proteína` : '',
+    activo.carbs_g ? `${activo.carbs_g} g carbohidratos` : '',
+    activo.fats_g ? `${activo.fats_g} g grasas` : '',
   ]
     .filter(Boolean)
     .join(' · ');
 
-  const dias = plan.planned_days ?? 0;
+  /* Una sola petición trae el plan completo y su cuadrícula. */
+  const { plan, progress } = await api(`/api/nutrition/plans/${activo.id}/progress`);
 
-  return `
-    <div class="list-item">
-      <strong>${escapeHtml(plan.name)}</strong>
-      <p>${durationLabel(plan.weeks)} · ${dias} día${dias === 1 ? '' : 's'} con plan</p>
-      ${macros ? `<p>${escapeHtml(macros)}</p>` : ''}
-      ${plan.description ? `<small class="muted">${escapeHtml(plan.description)}</small>` : ''}
-      <div class="actions mt">
-        <a class="btn secondary small" href="nutricion-formulario.html?id=${plan.id}">Modificar plan</a>
+  container.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h3>${escapeHtml(plan.name)}</h3>
+        <p class="muted">
+          ${durationLabel(plan.weeks)} · va por la semana ${plan.currentWeek}
+          ${macros ? ` · ${escapeHtml(macros)}` : ''}
+        </p>
       </div>
-    </div>`;
-}
-
-function renderNutrition(plans) {
-  document.querySelector('#nutrition').innerHTML = plans.length
-    ? plans.map(nutritionItem).join('')
-    : '<div class="empty">Este atleta todavía no tiene un plan de alimentación.</div>';
+      <a class="btn secondary small" href="nutricion-formulario.html?id=${plan.id}">Modificar</a>
+    </div>
+    ${renderNutritionCompliance(plan, progress)}`;
 }
 
 /* ---------- Carga ---------- */
@@ -191,13 +212,15 @@ async function load() {
     return;
   }
 
-  const [{ people }, { routines }, { athletes }, { checkins }, { plans }] = await Promise.all([
-    api('/api/links/people'),
-    api('/api/routines'),
-    api('/api/routines/compliance'),
-    api('/api/tracking/checkins'),
-    api('/api/nutrition/plans'),
-  ]);
+  const [{ people }, { routines }, { athletes }, { checkins }, { plans }, nutricion] =
+    await Promise.all([
+      api('/api/links/people'),
+      api('/api/routines'),
+      api('/api/routines/compliance'),
+      api('/api/tracking/checkins'),
+      api('/api/nutrition/plans'),
+      api('/api/nutrition/plans/compliance'),
+    ]);
 
   /* La lista de vinculados es la que decide si esta ficha puede verse: el
      identificador viene de la dirección y no se da por bueno. */
@@ -221,15 +244,20 @@ async function load() {
   const measurements = await loadMeasurements();
   renderSummary(
     athletes.find((item) => item.athleteId === athleteId),
+    nutricion.athletes.find((item) => item.athleteId === athleteId),
     measurements,
     misCheckins,
   );
   renderCheckins(misCheckins);
-  renderNutrition(suyos(plans));
 
-  await renderRoutine(
-    routines.find((item) => item.athlete_id === athleteId && item.status === 'active'),
-  );
+  /* Las dos cuadrículas se piden a la vez: cada una es una petición más y
+     encadenarlas duplicaría la espera antes de que la ficha esté completa. */
+  await Promise.all([
+    renderRoutine(
+      routines.find((item) => item.athlete_id === athleteId && item.status === 'active'),
+    ),
+    renderNutrition(suyos(plans)),
+  ]);
 }
 
 /* ---------- Registro de mediciones ---------- */

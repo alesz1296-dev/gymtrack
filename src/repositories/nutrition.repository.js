@@ -551,3 +551,54 @@ export async function dayNotificationContext(dayLogId) {
     )
   ).rows[0];
 }
+
+/* El plan activo de cada atleta vinculado, para el resumen del entrenador.
+
+   `DISTINCT ON` se queda con el más reciente cuando un atleta tiene varios, y
+   el `LEFT JOIN` hace que **los atletas sin plan aparezcan igual** en la lista,
+   con su aviso, en lugar de desaparecer. */
+export async function trainerAthletePlans(trainerId) {
+  return (
+    await pool.query(
+      `SELECT DISTINCT ON (u.id)
+        u.id AS athlete_id, u.first_name, u.last_name,
+        p.id AS plan_id, p.name AS plan_name, p.weeks, p.start_date,
+        COALESCE(p.origin_plan_id, p.id) AS origin_id,
+        (SELECT COUNT(*)::int FROM nutrition_days d
+          WHERE d.plan_id = p.id AND d.day_type = 'planned') AS planned_days
+      FROM trainer_athlete_links l
+      JOIN users u ON u.id = l.athlete_id
+      LEFT JOIN nutrition_plans p
+        ON p.athlete_id = u.id AND p.trainer_id = $1 AND p.status = 'active'
+      WHERE l.trainer_id = $1 AND l.status = 'active'
+      ORDER BY u.id, p.updated_at DESC NULLS LAST`,
+      [trainerId],
+    )
+  ).rows;
+}
+
+/* Días con plan cumplidos en una semana concreta, para varios planes a la vez.
+   Se resuelve en una sola consulta con dos listas en paralelo para no lanzar
+   una por atleta. Devuelve además cuántas comidas quedaron fuera de plan. */
+export async function completedPlanDays(origins, weeks) {
+  if (!origins.length) return [];
+
+  return (
+    await pool.query(
+      `WITH objetivo AS (SELECT * FROM unnest($1::uuid[], $2::int[]) AS t(origin, week))
+      SELECT o.origin, o.week,
+        COUNT(DISTINCT CASE WHEN dl.id IS NOT NULL THEN nd.day_order END)::int AS completed,
+        COALESCE(SUM(
+          (SELECT COUNT(*) FROM nutrition_meal_logs ml
+            WHERE ml.day_log_id = dl.id AND ml.status <> 'done')
+        ), 0)::int AS off_plan
+      FROM objetivo o
+      LEFT JOIN nutrition_plans p ON COALESCE(p.origin_plan_id, p.id) = o.origin
+      LEFT JOIN nutrition_days nd ON nd.plan_id = p.id AND nd.day_type = 'planned'
+      LEFT JOIN nutrition_day_logs dl
+        ON dl.nutrition_day_id = nd.id AND dl.week_number = o.week AND dl.completed_at IS NOT NULL
+      GROUP BY o.origin, o.week`,
+      [origins, weeks],
+    )
+  ).rows;
+}

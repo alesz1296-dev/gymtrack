@@ -89,6 +89,7 @@ test('las rutas reservadas a un rol lo declaran', async () => {
     ['nutrition', 'put', '/foods/:id', 'trainer'],
     ['nutrition', 'delete', '/foods/:id', 'trainer'],
     ['nutrition', 'get', '/foods/library', 'trainer'],
+    ['nutrition', 'get', '/plans/compliance', 'trainer'],
     ['nutrition', 'put', '/plans/:id', 'trainer'],
     ['nutrition', 'put', '/plans/:id/status', 'trainer'],
     ['tracking', 'put', '/checkins/:id/review', 'trainer'],

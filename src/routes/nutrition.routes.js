@@ -173,6 +173,9 @@ export const planInput = z
   });
 
 router.get('/plans', asyncHandler(controller.plans));
+/* Antes de `/plans/:id`, o Express tomaría "compliance" por un identificador.
+   Es la misma precaución que en `/routines/compliance`. */
+router.get('/plans/compliance', requireRole('trainer'), asyncHandler(controller.compliance));
 router.post(
   '/plans',
   requireRole('trainer'),
