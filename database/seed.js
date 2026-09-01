@@ -8,18 +8,16 @@
 
 import bcrypt from 'bcryptjs';
 import { pool } from '../src/config/database.js';
-import { env } from '../src/config/environment.js';
+import { destino, exigirLocal } from './destino.js';
 
-const host = new URL(env.databaseUrl).hostname;
-const esLocal = host === 'localhost' || host === '127.0.0.1';
+const { host, esLocal } = destino();
+console.log(`Base de datos: ${host}${esLocal ? '' : '  (NO es local)'}`);
 
-if (!esLocal && process.env.SEED_ALLOW_REMOTE !== 'true') {
-  console.error(`La conexión apunta a "${host}", que no es una base local.`);
-  console.error('Los datos demo no se cargan en una base remota por seguridad.');
-  console.error('Si de verdad quieres hacerlo: SEED_ALLOW_REMOTE=true npm run db:seed');
-  await pool.end();
-  process.exit(1);
-}
+exigirLocal({
+  comando: 'npm run db:seed',
+  variable: 'SEED_ALLOW_REMOTE',
+  motivo: 'Sembrar cuentas demo aquí las mezclaría con los usuarios reales.',
+});
 
 try {
   const passwordHash = await bcrypt.hash('Demo1234!', 12);

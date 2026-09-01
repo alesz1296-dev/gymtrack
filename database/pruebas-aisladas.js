@@ -38,7 +38,14 @@ function correr(args, titulo) {
   console.log(`\n--- ${titulo} ---`);
   return spawnSync(process.execPath, args, {
     stdio: 'inherit',
-    env: { ...process.env, DATABASE_URL: url.toString() },
+    env: {
+      ...process.env,
+      DATABASE_URL: url.toString(),
+      /* El guardarraíl de `migrate` se salta aquí a propósito y sin riesgo: la
+         base puede ser remota, pero el esquema es temporal y se destruye al
+         terminar, así que ninguna tabla real está a tiro. */
+      MIGRATE_ALLOW_REMOTE: 'true',
+    },
   }).status;
 }
 

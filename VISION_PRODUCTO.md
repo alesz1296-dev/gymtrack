@@ -2447,3 +2447,43 @@ Se detectó al ejecutar una auditoría rutinaria que falló sin motivo aparente.
 - Estado de la base tras el incidente: 27 tablas, 4 usuarios reales, 2 planes, ningún esquema temporal y ningún usuario de prueba.
 
 **Pendiente.** La primera ejecución real de la construcción, que ocurrirá con este mismo empuje. La insignia del `README` dirá si pasó.
+
+### Separación de entornos: guardarraíles
+
+El usuario pidió atacar el riesgo estructural y aplazar las fotografías de progreso, que **quedan en el backlog por decisión suya, sin fecha**.
+
+Este pendiente dejó de ser higiene en cuanto costó dos incidentes en dos días: la migración `007` que quitó `nutrition_meals.plan_id` y tumbó tres pantallas del sitio hasta el despliegue, y el script de diagnóstico que dejó un `search_path` pegado en una conexión del pool de Neon.
+
+Lo que los dos tienen en común es que **una operación de desarrollo alcanzó la base publicada sin que nadie se lo propusiera**. La regla del 14 de agosto —«antes de tocar datos, comprobar a qué base apunta `.env`»— dependía de que alguien se acordara, y no se acordó.
+
+#### `database/destino.js`
+
+Convierte esa regla en código, en un solo sitio:
+
+- **`destino()`** devuelve el host y si es local.
+- **`exigirLocal()`** detiene el comando cuando no lo es. **No es un muro sino un badén**: hay motivos legítimos para migrar la base publicada, así que se puede seguir con `MIGRATE_ALLOW_REMOTE=true`. Lo que ya no puede pasar es hacerlo *sin querer*, que es como pasó.
+- **`sentenciasDestructivas()`** detecta las migraciones que eliminan algo (`DROP TABLE`, `DROP COLUMN`, `DROP TYPE`, `DROP CONSTRAINT`, `RENAME`). Descarta los comentarios, porque casi todas las migraciones de este proyecto explican en prosa lo que hacen y «al eliminar la columna se van sus restricciones» es una explicación, no un `DROP`. Un guardarraíl que avisa de más se acaba ignorando.
+
+**Comprobado contra las ocho migraciones reales: señala exactamente la `007` y ninguna otra.**
+
+#### Qué cambió en los comandos
+
+`db:migrate` y `db:seed` **anuncian a qué base van antes de escribir nada** y se detienen si no es local. Cuando la base es remota y la migración pendiente elimina algo, `db:migrate` avisa de que el código publicado puede romperse en ese instante y de que hay que desplegar cuanto antes.
+
+`seed.js` tenía su propia copia de la comprobación desde el 14 de agosto; ahora usa la compartida y no la repite.
+
+`pruebas-aisladas.js` se salta el guardarraíl a propósito con `MIGRATE_ALLOW_REMOTE=true`, **y lo explica en un comentario**: puede hacerlo porque escribe en un esquema temporal que destruye al terminar, así que ninguna tabla real está a tiro. Sin esa explicación, el siguiente que lo lea pensaría que es un descuido y lo copiaría a otro sitio.
+
+#### Lo que falta y depende del usuario
+
+La otra mitad de la separación es que `.env` apunte a la base local. **No la puede hacer nadie más que él**: la contraseña de su PostgreSQL local nunca se guardó en este documento, y con razón. Además, editar un archivo que él tiene abierto en el editor se pierde en cuanto guarda, como ya ocurrió el 14 de agosto.
+
+El `README` incorpora la sección «Dos bases de datos: local y publicada» con la tabla de qué usa cada entorno, las tres líneas a cambiar en `.env`, los comandos posteriores y la explicación de los guardarraíles. Queda anotado que **Render no lee `.env`**, así que el cambio local no toca el sitio.
+
+#### Verificaciones
+
+- El guardarraíl frente a la configuración actual: `db:migrate` se detiene e imprime el host de Neon y cómo forzarlo. Comprobado en ejecución real.
+- El detector, contra las ocho migraciones del proyecto: una destructiva, siete aditivas.
+- `test/guardarrail-datos.test.js`, cinco pruebas puras: que reconozca las sentencias destructivas en varias formas y mayúsculas, que **un comentario que habla de eliminar no cuente**, que la `007` siga señalada, que los dos comandos exijan base local y anuncien el destino, que la comprobación viva en un solo sitio, y que el ejecutor aislado justifique por qué se la salta.
+- `npm run test:aislado` de extremo a extremo tras el cambio, con el esquema destruido y ninguno restante.
+- **La suite pasó de 182 a 187 pruebas**, todas aprobadas, y `format:check` conforme.

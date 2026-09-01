@@ -147,6 +147,62 @@ Mientras no exista un panel de administración, esta es la salida manual. Con ac
 UPDATE users SET email_verified_at = NOW() WHERE email = 'persona@ejemplo.com';
 ```
 
+## Dos bases de datos: local y publicada
+
+El proyecto trabajó durante semanas contra una sola base —la de Neon, la misma
+que sirve el sitio publicado— y eso costó dos incidentes: una migración que
+quitó una columna y tumbó tres pantallas hasta el despliegue, y un script de
+diagnóstico que dejó una conexión del pool inservible.
+
+La separación correcta es:
+
+| Entorno | Base | Quién la usa |
+| --- | --- | --- |
+| Desarrollo local | PostgreSQL en tu equipo | `.env` |
+| Sitio publicado | Neon | la variable `DATABASE_URL` de Render |
+
+**Render no lee `.env`**, así que cambiar el archivo local no afecta al sitio.
+
+### Cómo cambiar tu `.env` a la base local
+
+Edítalo tú, no dejes que lo haga otra herramienta mientras lo tienes abierto en
+el editor: al guardar sobrescribirías el cambio. Deja la línea de Neon como
+comentario, por si algún día necesitas volver.
+
+```
+# DATABASE_URL=<la de Neon, comentada como respaldo>
+DATABASE_URL=postgres://gymtrack_app:TU_CONTRASEÑA@localhost:5432/gymtrack
+DATABASE_SSL=false
+```
+
+Después:
+
+```
+npm.cmd run db:migrate    # crea las tablas en la base local
+npm.cmd run db:seed       # cuentas de demostración, solo funciona en local
+npm.cmd run dev
+```
+
+Las cuentas demo son `entrenador@demo.local` y `atleta@demo.local`, ambas con
+la contraseña `Demo1234!`. Son de desarrollo local y no existen en Neon.
+
+### Los guardarraíles
+
+`db:migrate` y `db:seed` **dicen a qué base van antes de escribir nada** y se
+detienen si no es local. Migrar la base publicada es legítimo al desplegar un
+cambio de esquema, así que no es un muro, es un badén:
+
+```
+MIGRATE_ALLOW_REMOTE=true npm.cmd run db:migrate
+```
+
+Cuando la base es remota, `db:migrate` **avisa además si la migración elimina
+algo** (`DROP COLUMN`, `DROP TABLE`, un cambio de nombre...). Esas rompen el
+código que está publicado en el instante en que se aplican, y la ventana no se
+cierra hasta que despliegas. Lo correcto con una migración así son **dos
+despliegues**: primero publicar el código que ya no usa la columna, y quitarla
+después.
+
 ## Pruebas
 
 El proyecto tiene una suite de pruebas automatizadas y dos formas de ejecutarla.
