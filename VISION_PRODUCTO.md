@@ -1,13 +1,131 @@
 # Visión del producto: plataforma para entrenadores y atletas
 
 > Documento vivo para conservar el contexto, las ideas y las decisiones del proyecto.
-> Última actualización: 14 de agosto de 2026.
+> Última actualización: 31 de agosto de 2026.
+>
+> **Empieza por «Estado actual», justo debajo.** Se reescribe en cada sesión
+> y resume dónde está el proyecto hoy. El resto es el historial cronológico,
+> que se conserva intacto y solo hace falta para entender POR QUÉ algo es
+> como es.
 
 ## Estado actual
 
-El 7 de agosto de 2026 se construyó la primera versión funcional del MVP. Se generó una aplicación web multipágina, un servidor modular de Node.js, el modelo relacional de PostgreSQL, migraciones, datos demo y documentación de instalación.
+> **Esta sección se reescribe entera en cada sesión y dice la verdad de hoy.**
+> Todo lo que hay debajo es el historial cronológico, que no se toca. Si vienes
+> a retomar el proyecto, con leer esta sección deberías poder empezar a
+> trabajar sin recorrer las 2.500 líneas siguientes.
+>
+> Última reescritura: **31 de agosto de 2026**.
 
-La implementación fue revisada sintácticamente y el servidor puede importar todos sus módulos. En el equipo actual no se detectó una instalación local de PostgreSQL, por lo que las migraciones y los recorridos que requieren datos todavía deben ejecutarse después de preparar PostgreSQL y configurar la contraseña en `.env`.
+### Qué es y dónde vive
+
+GymTrack es una aplicación web para entrenadores y atletas. El entrenador
+planifica (rutinas semanales, planes de alimentación, check-ins), el atleta
+ejecuta y registra, y la aplicación cierra el círculo mostrando la adherencia.
+
+| | |
+| --- | --- |
+| Código | `https://github.com/mespinoza86/gymtrack`, rama `main` |
+| Sitio publicado | `https://gymtrack-24fc.onrender.com` (Render, auto-despliegue desde `main`) |
+| Base de datos | Neon. **La misma para desarrollo y para producción, a propósito** |
+| Tecnología | Node.js 22 + Express 5, PostgreSQL, HTML multipágina con JavaScript modular sin framework |
+| Pruebas | 187, en 23 archivos |
+| Migraciones | 8, todas aplicadas |
+| Integración continua | GitHub Actions, en verde |
+
+### Cómo se trabaja aquí
+
+```
+npm.cmd run dev             # servidor local en http://localhost:3000
+npm.cmd run test:aislado    # pruebas en un esquema temporal (recomendado)
+npm.cmd test                # pruebas sobre las tablas reales
+npm.cmd run db:migrate      # aplicar migraciones pendientes
+npm.cmd run format          # dar estilo al JavaScript
+```
+
+**`.env` apunta a Neon y así se queda**, por decisión expresa del usuario del
+31 de agosto: sus datos reales están ahí y es adonde va todo lo publicado. La
+consecuencia hay que tenerla presente: **lo que se ejecute en el equipo afecta
+al sitio**. Por eso existe `test:aislado`, que hace lo mismo que `npm test` en
+un esquema temporal que se destruye al terminar.
+
+`db:migrate` dice siempre a qué base va y **se detiene si la migración elimina
+algo** y la base no es local, porque eso rompe el código publicado hasta el
+despliegue. Se sigue con `MIGRATE_ALLOW_DESTRUCTIVE=true`. `db:seed` no
+funciona contra una base remota.
+
+### Qué está construido y funcionando
+
+- **Cuentas y acceso.** Registro, inicio de sesión, roles de entrenador y
+  atleta, perfil, cambio de contraseña, recuperación por correo y confirmación
+  de la dirección (bloqueante).
+- **Vinculación.** Invitaciones de un solo uso, aceptación, fin de la relación
+  conservando el historial del atleta.
+- **Rutinas.** Biblioteca de ejercicios propios y generales, constructor
+  semanal de siete días con días libres y días espejo, duración en semanas,
+  versionado al modificar, duplicar y archivar. El atleta marca ejercicio por
+  ejercicio y el día se cierra solo. El entrenador ve la cuadrícula de
+  cumplimiento.
+- **Nutrición.** Lo mismo, terminado el 31 de agosto: biblioteca de alimentos
+  (46 generales más los propios), planes semanales con días → comidas →
+  renglones, registro comida por comida con sustituciones, y adherencia para el
+  entrenador.
+- **Seguimiento.** Mediciones corporales con gráficas, check-ins periódicos con
+  respuesta del entrenador, ficha individual del atleta.
+- **Comunicación.** Chat en tiempo real, notificaciones dentro de la aplicación
+  con nueve eventos conectados, contadores en vivo.
+- **Seguridad.** Todas las deudas de la revisión del 12 de agosto están
+  cerradas y verificadas en producción: XSS, CSRF, fijación de sesión,
+  aislamiento de datos entre atletas y autorización por rol.
+
+### Qué NO está construido
+
+- **Fotografías de progreso.** La tabla existe desde la migración inicial y está
+  vacía. **En el backlog por decisión del usuario del 31 de agosto, sin fecha.**
+  Empieza por elegir almacenamiento de objetos, porque el disco de Render se
+  borra en cada despliegue.
+- **Calendario, pagos, integraciones con relojes, exportar a PDF, cuentas de
+  gimnasio con varios entrenadores.** Nunca se empezaron; son etapas futuras.
+
+### Pendientes reales, en orden de valor
+
+1. **Dominio propio y paso a Resend.** El remitente es una dirección
+   `@gmail.com` y la confirmación de correo es **bloqueante**: quien no reciba
+   el correo no entra. Es lo que impide abrir la aplicación a personas reales.
+   El transporte de Resend ya está escrito; son tres variables y una tarde de
+   DNS.
+2. **Fotografías de progreso**, cuando el usuario quiera.
+3. **Cabos de higiene**, ninguno urgente:
+   - `auth_tokens` crece sin límite (hay 6 filas, las 6 usadas o vencidas).
+   - `multer` declarado en `package.json` y sin usar, esperando a las fotos.
+   - Carrera en `createOnce` / `createUnlessUnread`: dos peticiones simultáneas
+     pueden duplicar un aviso. La solución es un índice único parcial más
+     `ON CONFLICT DO NOTHING`.
+   - Una medición no se puede corregir a «sin dato» por el `COALESCE` del
+     upsert, y `recorded_by` guarda quién tocó la fila la última vez, no quién
+     midió cada campo.
+   - `ssl: { rejectUnauthorized: false }` en `src/config/database.js`: la
+     conexión va cifrada pero sin verificar el certificado. Es la otra cara del
+     aviso de `pg` sobre `sslmode=verify-full`.
+
+### Reglas de trabajo que hay que respetar
+
+- **Todo cambio material se anota en este documento durante la sesión**, no al
+  final del día. Es el acuerdo desde el 8 de agosto.
+- **Antes de dar por bueno un pendiente, comprobarlo contra el código.** Se ha
+  arrastrado más de una vez algo que ya estaba hecho.
+- **Antes de tocar datos, comprobar a qué base apunta `.env`.** No fiarse de lo
+  que diga este documento: un dato de configuración escrito aquí envejece en
+  cuanto alguien cambia el archivo.
+- **Una migración que elimina algo necesita dos despliegues:** primero el
+  código que ya no usa lo que se va a quitar, y la migración después.
+- **No editar `.env` por el usuario.** Lo tiene abierto en el editor y su
+  siguiente guardado sobrescribe el cambio; ya pasó el 14 de agosto.
+- **Las pruebas que escriben en la base acotan sus borrados y comprueban el
+  recuento de filas eliminadas.** Cualquier prueba nueva debe hacer lo mismo.
+- **Verificar los despliegues desde fuera**, sin dar por hecho que subieron:
+  pedir un archivo nuevo y comprobar que un endpoint nuevo responda 401 en vez
+  de 404.
 
 ## Idea general
 
@@ -2514,3 +2632,107 @@ El `README` cambió de «Dos bases de datos» a **«Una sola base de datos, a pr
 **Lo que queda del riesgo, dicho claro:** `npm test` a secas sigue escribiendo sobre las tablas reales, y eso no cambia. Lo que sí cambia es que ahora existe `npm run test:aislado`, que hace lo mismo en un esquema temporal, y que la integración continua usa siempre una base efímera. El riesgo pasa de ser el camino por defecto a ser una elección.
 
 **Las fotografías de progreso quedan en el backlog por decisión del usuario, sin fecha.**
+
+## Resumen del 31 de agosto de 2026
+
+Todo lo de abajo está explicado en detalle en las secciones anteriores de este mismo día; esto es el índice para reencontrarlo, y la foto exacta de cómo quedó todo.
+
+### Cómo empezó la jornada
+
+El repositorio llevaba **diecisiete días sin cambios**: el último commit era `ac6b766`, del 14 de agosto. El usuario pidió leer el documento entero, un resumen del estado y una revisión del código. De ahí salió el trabajo del día.
+
+### Los seis commits, en orden
+
+| Commit | Qué trae |
+| --- | --- |
+| `4f92c01` | Biblioteca de alimentos y planes de nutrición semanales (fases 1 y 2) |
+| `de322a5` | El atleta registra lo que come (fase 3) |
+| `7f0f808` | El entrenador ve la adherencia (fase 4) |
+| `029a57e` | Integración continua y ejecutor de pruebas aislado |
+| `1aa8662` | Guardarraíles de base de datos |
+| `067f11a` | Corrección de esos guardarraíles tras la decisión del usuario |
+
+**Cifras del día:** 50 archivos, 6.287 líneas añadidas y 346 quitadas. **Las pruebas pasaron de 106 a 187.** Tres migraciones nuevas: `006`, `007` y `008`.
+
+### Lo que se construyó, en orden
+
+**1. Revisión inicial del código.** Se leyó el código y no solo esta bitácora. Salió un error real: el aviso de check-in decía **«undefined undefined envió su check-in»** porque `tracking.service.js` usaba `user.first_name` sobre un objeto de sesión que guarda los nombres en camelCase. Era el único punto de `src` donde se mezclaban las dos convenciones.
+
+**2. Diagnóstico de nutrición.** Comparada con rutinas, nutrición se había quedado en el MVP del 7 de agosto: plan plano sin días, **una sola comida** desde la interfaz aunque la API aceptara varias, sin biblioteca, sin editar, duplicar ni archivar, **sin ninguna forma de que el atleta registrara nada**, sin aviso al asignar un plan y sin una sola prueba propia. El ciclo del producto se cortaba en el paso 2.
+
+Se encontraron además tres defectos concretos: `createNutritionPlan` insertaba el plan y sus comidas **sin transacción** —único sitio del proyecto con una escritura de varias tablas sin `withTransaction`—, no notificaba al atleta, y el formulario seguía enviando una sola comida.
+
+**3. Decisión del usuario sobre los alimentos.** Ante tres caminos —texto libre, base de datos completa de alimentos, o biblioteca propia del entrenador— eligió una combinación: **biblioteca general cargada por defecto, más los alimentos y platos que cada entrenador cree, conservando además el texto libre** para lo que no merezca la pena catalogar.
+
+**4. Reordenación de las fases.** La propuesta inicial ponía la paridad de gestión primero; con la decisión tomada se invirtió, porque construir «varias comidas» sobre el modelo plano habría obligado a tirar ese formulario al meter los días.
+
+**5. Nutrición, cuatro fases.**
+
+- **Fase 1:** la nutrición pasa a ser su propio módulo de cuatro capas en `/api/nutrition`; biblioteca de alimentos con 46 generales y los propios de cada entrenador, calcando el patrón de `exercises`.
+- **Fase 2:** planes semanales con días → comidas → renglones, días libres, días espejo, duración en semanas, versionado al modificar, duplicar y archivar.
+- **Fase 3:** el atleta marca cada comida como hecha, cambiada o no hecha; el día se cierra solo y el entrenador recibe el aviso.
+- **Fase 4:** cuadrícula de adherencia y resumen por atleta; la cuadrícula se generalizó para servir a rutinas y a nutrición sin duplicarse.
+
+**6. Integración continua.** `.github/workflows/ci.yml` ejecuta estilo, migraciones desde cero, importación de la aplicación y las 187 pruebas en cada empuje y cada pull request, contra un PostgreSQL efímero. Y `npm run test:aislado`, su equivalente local sobre un esquema temporal.
+
+**7. Guardarraíles de base de datos**, y su corrección posterior tras decidir el usuario que se sigue trabajando contra Neon.
+
+### Decisiones de producto tomadas hoy
+
+- **La unidad de registro de nutrición es la comida**, no el alimento ni el día. Quince toques diarios no los hace nadie; el día entero ocultaría qué comida se salta la gente.
+- **Tres estados y no dos** al registrar: hecho, cambiado y no hecho. Un registro que solo admite sí o no empuja a mentir, y el documento de visión ya preveía las sustituciones desde el principio.
+- **Los macros van por porción, y la porción la define cada alimento.** Un huevo se mide en unidades y el pan en rebanadas; forzarlo todo a 100 g habría hecho la biblioteca incómoda en lo más cotidiano.
+- **Los macros no se copian al renglón.** Corregir una errata en un alimento corrige todos los planes que lo usan.
+- **Un macro sin dato se guarda nulo, nunca cero.** Cero es un valor legítimo —el agua— y confundirlos falsearía los totales.
+- **La suma avisa cuando está incompleta.** Mostrar «2.400 kcal» con la misma seguridad tanto si están contados todos los renglones como si la mitad no, es mentir.
+- **Se cuentan las comidas fuera de plan.** Un cumplimiento del 100 % a base de sustituciones no es lo mismo que uno seguido al pie de la letra.
+- **El día de hoy lo calcula el servidor**, no el navegador, para que no dependa del reloj del teléfono.
+- **Solo cuentan los días con plan** en el cumplimiento; incluir los libres inflaría la cifra.
+
+### Lo que se corrigió por el camino
+
+| Qué | Dónde |
+| --- | --- |
+| Aviso de check-in que decía «undefined undefined» | `tracking.service.js` |
+| Crear un plan sin transacción, pudiendo quedar a medias | `nutrition.repository.js` |
+| Asignar un plan no avisaba al atleta | `nutrition.service.js` |
+| `README` pedía retirar unas cuentas demo que ya no existen | `README.md:155` |
+| La cabecera del documento seguía diciendo que PostgreSQL no estaba instalado | esta bitácora |
+| El módulo de cumplimiento estaba atado al vocabulario de las rutinas | `cumplimiento.js` |
+
+### Ocho errores propios, para no repetirlos
+
+1. **Acentos graves dentro de una plantilla de texto** de JavaScript: cerraban la plantilla y el archivo dejó de compilar. Dentro de una consulta SQL en plantilla, los comentarios van con `--`.
+2. **Comparar texto con `uuid`** en una consulta de limpieza (`sess -> 'user' ->> 'id' = ANY($1::uuid[])`). PostgreSQL respondió `operator does not exist` y **los usuarios temporales quedaron sin borrar** hasta corregirlo.
+3. **Un literal de enum dentro de un `SELECT` no se convierte solo.** `INSERT ... SELECT 'planned'` falló; hay que escribir `'planned'::nutrition_day_type`. En un `INSERT ... VALUES` sí se ajusta, y esa diferencia es la que despista.
+4. **Probar las reglas de validación llamando al servicio**, que no pasa por Zod. El plan inválido llegaba hasta PostgreSQL y fallaba por una restricción de la tabla en vez de por la regla que se quería comprobar. Se movieron a un archivo puro contra el esquema.
+5. **Dar por bueno un servidor local que era el de la fase anterior.** Seguía ocupando el puerto 3000 y respondía con código viejo; se perdió un rato buscando el fallo en un esquema que era correcto. **Antes de fiarse de una comprobación local, asegurarse de que responde el servidor recién arrancado.**
+6. **Una expresión regular de prueba sin anclar** capturó el `z.enum` del estado del *plan* en vez del estado del *registro*. Segunda vez en el proyecto que pasa lo mismo.
+7. **Llamar `test-aislado.js` a un script que no es una prueba.** `node --test` da por prueba todo lo que encaje en `test-*.js`, así que `npm test` se ejecutaba a sí mismo de forma anidada. Se notó porque la suite pasó de 182 a 183.
+8. **Dejar un `search_path` pegado en una conexión del pool de producción.** Ver el incidente completo más abajo.
+
+### Los dos incidentes en producción
+
+**Incidente 1: la migración `007` tumbó tres pantallas del sitio.** Eliminó `nutrition_meals.plan_id` mientras el código publicado seguía haciendo `LEFT JOIN ... ON m.plan_id = p.id`. Cayeron nutrición del entrenador, nutrición del atleta y **la ficha individual entera** —pide cinco endpoints con `Promise.all` y al rechazar uno no cargaba nada—. Daño real ninguno, porque se había comprobado antes que no existía ni un plan guardado, pero el sitio estuvo roto desde que se aplicó la migración hasta el despliegue.
+
+**Incidente 2: una conexión del pool quedó inservible.** Un script de diagnóstico hizo `SET search_path` sobre una conexión de `pool.connect()` y la devolvió sin restaurarla; el pooler de Neon la mantuvo viva con ese ajuste y, al borrar el esquema, esa conexión empezó a responder `relation "users" does not exist` a quien cayera en ella. Se detectó al fallar una auditoría rutinaria. **Las 27 tablas seguían intactas**; se corrigió tomando diez conexiones a la vez y restaurando el `search_path`, y se verificó con 60 consultas concurrentes.
+
+De los dos salieron dos reglas que ahora son código: la migración destructiva se detiene sola, y una conexión que se modifica con `SET` hay que devolverla como estaba.
+
+### La decisión del usuario sobre los entornos
+
+Se le propuso pasar el desarrollo a una base local y **dijo que no**: prefiere seguir contra Neon, donde están sus datos reales y adonde va todo lo publicado. **`.env` no se tocó.**
+
+Esa decisión invalidaba el bloqueo de `db:migrate` que se acababa de construir, y se retiró en el momento: no habría evitado ninguno de los dos incidentes, y un badén en cada migración solo enseña a escribir la variable sin leerla. **El badén se movió a lo destructivo**, que es donde estuvo el daño.
+
+### Estado exacto al cerrar
+
+- **Rama `main` sincronizada con GitHub**, sin cambios sin guardar.
+- **Las tres últimas ejecuciones de integración continua, en verde.**
+- **El sitio publicado responde 200** y tiene todo el código: desde `7f0f808` no ha cambiado ni una línea de `src/` ni de `public/`, así que los tres commits posteriores no necesitan despliegue.
+- **Base de datos:** 27 tablas, 8 migraciones aplicadas, 4 usuarios reales, 2 planes de nutrición, 3 rutinas, 46 alimentos generales. **Cero restos de prueba y cero esquemas temporales**, auditado.
+- Quedó un servidor local en marcha en `http://localhost:3000` desde las comprobaciones; apunta a Neon y muere al reiniciar el equipo.
+
+### Punto exacto de continuación
+
+**No queda nada a medias.** Lo siguiente, por orden de valor, está en la sección «Estado actual» al principio de este documento, que se reescribió hoy por primera vez y es donde hay que mirar al retomar. En resumen: **dominio propio y paso a Resend** —lo único que impide abrir la aplicación a personas reales, porque la confirmación de correo es bloqueante y el remitente es un `@gmail.com`—, después las **fotografías de progreso** cuando el usuario quiera, y por último los cabos de higiene, ninguno urgente.
