@@ -1,16 +1,22 @@
 /* A qué base apunta la configuración, y si conviene dejar que un comando
    escriba en ella.
 
-   Existe porque este proyecto ha trabajado durante semanas contra la misma
-   base que sirve el sitio publicado, y eso ya ha costado dos incidentes:
-   una migración que quitó una columna y tumbó tres pantallas hasta el
-   despliegue, y un script de diagnóstico que dejó un `search_path` pegado en
-   una conexión del pool.
+   El usuario decidió el 31 de agosto **seguir trabajando contra Neon**, la
+   misma base que sirve el sitio publicado. Es su proyecto y sus datos están
+   ahí; la decisión se respeta y no se le pone un muro delante.
 
-   La regla que quedó establecida el 14 de agosto es "antes de tocar datos,
-   comprobar a qué base apunta `.env`; no fiarse de lo que diga la
-   documentación". Esto la convierte en código, para que no dependa de que
-   alguien se acuerde. */
+   Eso cambia qué protección tiene sentido. De los dos incidentes que hubo,
+   ninguno se habría evitado impidiendo migrar la base publicada: en el primero
+   la intención *era* migrarla, y el segundo fue un script de diagnóstico que
+   ni siquiera pasaba por aquí. Lo que sí habría avisado a tiempo es reparar en
+   que la migración **eliminaba una columna** mientras el código desplegado
+   seguía usándola.
+
+   Así que el badén se pone exactamente ahí y en ningún otro sitio: migrar
+   Neon no cuesta nada, pero hacerlo con una migración destructiva exige
+   decirlo a propósito. La regla del 14 de agosto —"antes de tocar datos,
+   comprobar a qué base apunta `.env`"— se conserva como aviso en cada
+   ejecución, para que no dependa de que alguien se acuerde. */
 
 import { env } from '../src/config/environment.js';
 
@@ -23,8 +29,9 @@ export function destino() {
 
 /* Detiene el comando si la base no es local y no se ha pedido a propósito.
 
-   No es un muro: hay motivos legítimos para migrar la base publicada. Es un
-   badén, para que nunca vuelva a ocurrir *sin querer*, que es como ocurrió. */
+   Lo usa solo `db:seed`, y ahí sí tiene sentido incondicional: sembrar las
+   cuentas de demostración en la base publicada mezclaría usuarios falsos con
+   los reales, y eso no tiene ningún uso legítimo en este proyecto. */
 export function exigirLocal({ comando, variable, motivo }) {
   const { host, esLocal } = destino();
   if (esLocal || process.env[variable] === 'true') return { host, esLocal };

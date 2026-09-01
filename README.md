@@ -147,61 +147,50 @@ Mientras no exista un panel de administración, esta es la salida manual. Con ac
 UPDATE users SET email_verified_at = NOW() WHERE email = 'persona@ejemplo.com';
 ```
 
-## Dos bases de datos: local y publicada
+## Una sola base de datos, a propósito
 
-El proyecto trabajó durante semanas contra una sola base —la de Neon, la misma
-que sirve el sitio publicado— y eso costó dos incidentes: una migración que
-quitó una columna y tumbó tres pantallas hasta el despliegue, y un script de
-diagnóstico que dejó una conexión del pool inservible.
+Este proyecto usa **la misma base de Neon para desarrollo y para el sitio
+publicado**. Es una decisión tomada a conciencia, no un descuido: los datos
+reales están ahí y trabajar contra ellos es lo que se quiere.
 
-La separación correcta es:
+Tiene una consecuencia que conviene tener presente: **lo que ejecutes en tu
+equipo afecta al sitio**. Las pruebas crean y borran usuarios, y una migración
+cambia el esquema que el sitio está usando en ese mismo instante.
 
-| Entorno | Base | Quién la usa |
-| --- | --- | --- |
-| Desarrollo local | PostgreSQL en tu equipo | `.env` |
-| Sitio publicado | Neon | la variable `DATABASE_URL` de Render |
+Por eso hay dos protecciones y una alternativa.
 
-**Render no lee `.env`**, así que cambiar el archivo local no afecta al sitio.
+### Migraciones que eliminan algo
 
-### Cómo cambiar tu `.env` a la base local
+`db:migrate` dice siempre a qué base va antes de escribir nada, y **no estorba**
+cuando la migración solo añade: las columnas nuevas las ignora el código que ya
+está publicado.
 
-Edítalo tú, no dejes que lo haga otra herramienta mientras lo tienes abierto en
-el editor: al guardar sobrescribirías el cambio. Deja la línea de Neon como
-comentario, por si algún día necesitas volver.
-
-```
-# DATABASE_URL=<la de Neon, comentada como respaldo>
-DATABASE_URL=postgres://gymtrack_app:TU_CONTRASEÑA@localhost:5432/gymtrack
-DATABASE_SSL=false
-```
-
-Después:
+Pero si la migración **quita** algo —`DROP COLUMN`, `DROP TABLE`, un cambio de
+nombre— se detiene y no la aplica:
 
 ```
-npm.cmd run db:migrate    # crea las tablas en la base local
-npm.cmd run db:seed       # cuentas de demostración, solo funciona en local
-npm.cmd run dev
+  007_ejemplo.sql ELIMINA cosas del esquema: DROP COLUMN.
+  En cuanto se aplique, el código que está desplegado ahora puede
+  romperse, y seguirá roto hasta que publiques la versión nueva.
+
+  Si lo tienes decidido y vas a desplegar acto seguido:
+    MIGRATE_ALLOW_DESTRUCTIVE=true npm.cmd run db:migrate
 ```
 
-Las cuentas demo son `entrenador@demo.local` y `atleta@demo.local`, ambas con
-la contraseña `Demo1234!`. Son de desarrollo local y no existen en Neon.
+Pasó de verdad el 31 de agosto: la migración `007` quitó una columna que el
+código publicado seguía consultando y tres pantallas del sitio quedaron caídas
+hasta el despliegue. **Lo correcto con una migración así son dos despliegues:**
+primero el código que ya no usa la columna, y quitarla después.
 
-### Los guardarraíles
+### Cuentas de demostración
 
-`db:migrate` y `db:seed` **dicen a qué base van antes de escribir nada** y se
-detienen si no es local. Migrar la base publicada es legítimo al desplegar un
-cambio de esquema, así que no es un muro, es un badén:
+`db:seed` **no funciona contra una base remota** y no hay motivo para forzarlo:
+sembrar cuentas falsas entre los usuarios reales no arregla nada.
 
-```
-MIGRATE_ALLOW_REMOTE=true npm.cmd run db:migrate
-```
+### Pruebas sin tocar los datos reales
 
-Cuando la base es remota, `db:migrate` **avisa además si la migración elimina
-algo** (`DROP COLUMN`, `DROP TABLE`, un cambio de nombre...). Esas rompen el
-código que está publicado en el instante en que se aplican, y la ventana no se
-cierra hasta que despliegas. Lo correcto con una migración así son **dos
-despliegues**: primero publicar el código que ya no usa la columna, y quitarla
-después.
+Ver la sección siguiente: `npm.cmd run test:aislado` ejecuta la suite en un
+esquema temporal que se destruye al terminar.
 
 ## Pruebas
 

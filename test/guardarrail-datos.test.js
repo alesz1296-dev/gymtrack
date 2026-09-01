@@ -67,15 +67,26 @@ test('la migración 007 se reconoce como destructiva y las demás no', async () 
   }
 });
 
-test('migrar y sembrar exigen una base local o permiso explícito', async () => {
+test('migrar una base remota no se bloquea, pero destruir sí', async () => {
   const [migrate, seed, destino] = await Promise.all([
     read('../database/migrate.js'),
     read('../database/seed.js'),
     read('../database/destino.js'),
   ]);
 
-  assert.match(migrate, /exigirLocal\(/, 'migrate debe pedir base local');
-  assert.match(migrate, /MIGRATE_ALLOW_REMOTE/);
+  /* El usuario decidió el 31 de agosto seguir trabajando contra Neon. Poner un
+     badén en cada migración solo enseñaría a escribir la variable sin leerla, y
+     además no habría evitado ninguno de los dos incidentes que hubo. */
+  assert.ok(!migrate.includes('exigirLocal('), 'migrar una base remota no se bloquea');
+
+  /* El badén va donde estuvo el daño: una migración que ELIMINA algo rompe el
+     código publicado en el instante en que se aplica. */
+  assert.match(migrate, /MIGRATE_ALLOW_DESTRUCTIVE/);
+  assert.match(migrate, /sentenciasDestructivas\(sql\)/);
+  assert.match(migrate, /process\.exit\(1\)/, 'y se detiene de verdad');
+
+  /* Sembrar sí se bloquea siempre: mezclar cuentas demo con usuarios reales no
+     tiene ningún uso legítimo en este proyecto. */
   assert.match(seed, /exigirLocal\(/, 'seed debe pedir base local');
   assert.match(seed, /SEED_ALLOW_REMOTE/);
 
@@ -96,7 +107,7 @@ test('el ejecutor aislado se salta el guardarraíl a propósito y lo explica', a
   /* Puede saltárselo porque escribe en un esquema temporal que destruye al
      terminar; ninguna tabla real está a tiro. Sin el comentario, el próximo
      que lo lea pensaría que es un descuido y lo copiaría a otro sitio. */
-  assert.match(source, /MIGRATE_ALLOW_REMOTE: 'true'/);
+  assert.match(source, /MIGRATE_ALLOW_DESTRUCTIVE: 'true'/);
   assert.match(source, /esquema es temporal|se destruye al terminar/);
   assert.match(source, /DROP SCHEMA IF EXISTS/, 'y lo destruye pase lo que pase');
 });

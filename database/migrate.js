@@ -2,24 +2,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pool } from '../src/config/database.js';
-import { destino, exigirLocal, sentenciasDestructivas } from './destino.js';
+import { destino, sentenciasDestructivas } from './destino.js';
 
 const directory = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
 
 /* A qué base se va a escribir, dicho en voz alta antes de tocar nada. El 14 de
    agosto se aplicaron migraciones a la base publicada creyendo que iban a la
-   local, y no se supo hasta horas después. */
+   local, y no se supo hasta horas después.
+
+   Migrar una base remota NO se bloquea: en este proyecto es lo normal, porque
+   se trabaja contra la misma base que sirve el sitio. Poner un badén en cada
+   migración solo enseñaría a escribir la variable sin leerla. */
 const { host, esLocal } = destino();
 console.log(`Base de datos: ${host}${esLocal ? '' : '  (NO es local)'}`);
-
-exigirLocal({
-  comando: 'npm run db:migrate',
-  variable: 'MIGRATE_ALLOW_REMOTE',
-  motivo:
-    'Migrar la base publicada cambia el esquema que usa el sitio en ese mismo\n' +
-    '  instante. Si la migración quita algo, el código desplegado se rompe\n' +
-    '  hasta que publiques la versión nueva.',
-});
 
 try {
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -39,15 +34,26 @@ try {
   for (const filename of pendientes) {
     const sql = await fs.readFile(path.join(directory, filename), 'utf8');
 
-    /* Sobre una base remota, avisar antes de aplicar algo que quita: es la
-       diferencia entre un despliegue tranquilo y tres pantallas caídas. */
+    /* Aquí sí se para, y solo aquí.
+
+       Una migración que solo AÑADE es inofensiva para el código publicado: las
+       columnas nuevas se ignoran. Una que QUITA rompe el sitio en el instante
+       en que se aplica, y la ventana no se cierra hasta el despliegue. Pasó
+       con la 007 y el sitio estuvo con tres pantallas caídas.
+
+       Es el único caso que merece detener el comando, porque es el único en
+       que la consecuencia no se ve hasta que alguien abre esa pantalla. */
     const destructivas = sentenciasDestructivas(sql);
-    if (!esLocal && destructivas.length) {
-      console.warn(
-        `\n  AVISO: ${filename} elimina cosas del esquema (${destructivas.join(', ')}).`,
-      );
-      console.warn('  El código que está publicado ahora puede romperse en cuanto se aplique.');
-      console.warn('  Despliega cuanto antes, o aplica esta migración justo antes de desplegar.\n');
+    if (!esLocal && destructivas.length && process.env.MIGRATE_ALLOW_DESTRUCTIVE !== 'true') {
+      console.error(`\n  ${filename} ELIMINA cosas del esquema: ${destructivas.join(', ')}.`);
+      console.error(`  La base "${host}" es la que sirve el sitio publicado.`);
+      console.error('  En cuanto se aplique, el código que está desplegado ahora puede');
+      console.error('  romperse, y seguirá roto hasta que publiques la versión nueva.\n');
+      console.error('  Lo correcto son dos despliegues: primero el código que ya no usa');
+      console.error('  lo que se va a quitar, y la migración después.\n');
+      console.error('  Si lo tienes decidido y vas a desplegar acto seguido:');
+      console.error('    MIGRATE_ALLOW_DESTRUCTIVE=true npm run db:migrate\n');
+      process.exit(1);
     }
 
     const client = await pool.connect();

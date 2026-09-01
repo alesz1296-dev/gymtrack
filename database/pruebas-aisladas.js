@@ -44,7 +44,7 @@ function correr(args, titulo) {
       /* El guardarraíl de `migrate` se salta aquí a propósito y sin riesgo: la
          base puede ser remota, pero el esquema es temporal y se destruye al
          terminar, así que ninguna tabla real está a tiro. */
-      MIGRATE_ALLOW_REMOTE: 'true',
+      MIGRATE_ALLOW_DESTRUCTIVE: 'true',
     },
   }).status;
 }

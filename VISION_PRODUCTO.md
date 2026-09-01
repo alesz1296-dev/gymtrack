@@ -2487,3 +2487,30 @@ El `README` incorpora la sección «Dos bases de datos: local y publicada» con 
 - `test/guardarrail-datos.test.js`, cinco pruebas puras: que reconozca las sentencias destructivas en varias formas y mayúsculas, que **un comentario que habla de eliminar no cuente**, que la `007` siga señalada, que los dos comandos exijan base local y anuncien el destino, que la comprobación viva en un solo sitio, y que el ejecutor aislado justifique por qué se la salta.
 - `npm run test:aislado` de extremo a extremo tras el cambio, con el esquema destruido y ninguno restante.
 - **La suite pasó de 182 a 187 pruebas**, todas aprobadas, y `format:check` conforme.
+
+#### Decisión del usuario: se sigue trabajando contra Neon
+
+Al presentarle los pasos para pasar el desarrollo a una base local, **el usuario decidió no hacerlo**: prefiere seguir contra Neon, que es donde están sus datos reales y adonde va todo lo que se publica. Es su proyecto y la decisión se respeta y queda registrada. **`.env` no se toca.**
+
+Esa decisión invalidaba parte de lo que se acababa de construir, así que se corrigió en el momento en lugar de dejarlo.
+
+**El bloqueo de `db:migrate` contra una base remota se retiró.** Al revisarlo con la decisión delante, quedó claro que **no habría evitado ninguno de los dos incidentes**: en el del `007` la intención era precisamente migrar Neon, y el del `search_path` fue un script de diagnóstico que ni siquiera pasa por `migrate`. Un badén en cada migración, en un proyecto que migra Neon siempre, solo enseña a escribir la variable sin leerla; y un guardarraíl que se saltan por costumbre deja de ser un guardarraíl.
+
+**El badén se movió a donde estuvo el daño.** `db:migrate` ahora:
+
+- Dice a qué base va antes de escribir nada, siempre.
+- **No estorba** cuando la migración solo añade, que es el caso normal: las columnas nuevas las ignora el código publicado.
+- **Se detiene y no aplica nada** cuando la migración elimina algo y la base no es local, explicando que el sitio se romperá hasta el despliegue y que lo correcto son dos despliegues. Se sigue con `MIGRATE_ALLOW_DESTRUCTIVE=true`.
+
+`db:seed` mantiene su bloqueo incondicional: mezclar cuentas de demostración con usuarios reales no tiene ningún uso legítimo, y ese guardarraíl lleva desde el 14 de agosto sin molestar a nadie.
+
+**Comprobado en ejecución real contra Neon:**
+
+- Con todo aplicado: `Base de datos: ep-…neon.tech (NO es local)` y `Migraciones al día`. Sin fricción.
+- Con una migración destructiva pendiente —un archivo de prueba con `DROP TABLE IF EXISTS` sobre una tabla inexistente, inofensivo si llegara a ejecutarse—: **se detuvo con código de salida 1**, explicó la consecuencia y **no la registró en `schema_migrations`**. El archivo temporal se eliminó después.
+
+El `README` cambió de «Dos bases de datos» a **«Una sola base de datos, a propósito»**, que describe lo que de verdad hace el proyecto en lugar de lo que sería ortodoxo. Explica la consecuencia —lo que se ejecuta en el equipo afecta al sitio—, las dos protecciones y `test:aislado` como forma de ejecutar la suite sin tocar datos reales.
+
+**Lo que queda del riesgo, dicho claro:** `npm test` a secas sigue escribiendo sobre las tablas reales, y eso no cambia. Lo que sí cambia es que ahora existe `npm run test:aislado`, que hace lo mismo en un esquema temporal, y que la integración continua usa siempre una base efímera. El riesgo pasa de ser el camino por defecto a ser una elección.
+
+**Las fotografías de progreso quedan en el backlog por decisión del usuario, sin fecha.**
