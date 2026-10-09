@@ -1,0 +1,4 @@
+region            = "us-east-1"
+availability_zone = "us-east-1a"
+# Browser SSH remains available; optionally allow your own public IP.
+# ssh_cidrs = ["203.0.113.10/32"]

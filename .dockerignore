@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+.env
+.env.*
+**/.env
+**/.env.*
+storage
+coverage
+test
+*.dump
+*.sql.gz
+*.log
+deploy
+VISION_PRODUCTO.md
